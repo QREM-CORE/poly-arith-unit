@@ -7,7 +7,6 @@ module unipam_top_tb;
     logic       clk;
     logic       rst;
     logic       start_i;
-    logic [1:0] pass_idx; // Added to drive the DUT port
     pe_mode_e   op_type_i;
 
     // Correctly mapped all ports
@@ -31,16 +30,12 @@ module unipam_top_tb;
         // Initialize signals
         rst       = 1;
         start_i   = 0;
-        pass_idx  = 0;
         op_type_i = PE_MODE_NTT;
 
         // Hold reset for a couple of clocks
         #20;
         rst = 0;
         #10;
-
-        op_type_i = PE_MODE_NTT;
-        pass_idx  = 2'd0;
 
         // Pulse start_i for 1 clock cycle
         start_i = 1;

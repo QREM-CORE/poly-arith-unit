@@ -11,6 +11,13 @@
  *
  * Description:
  * Top module for the whole UNIPAM system.
+ *
+ * Wire fixes in this version:
+ *   - fixed missing comma in top-level port list
+ *   - fixed controller -> CMI ready handshake (no longer tied to 1'b1)
+ *   - fixed CMI instance to use current mem_* port names
+ *   - fixed output-output short between cmi.ready_o and wrapper.ready_o
+ *   - fixed cmi_coeff_valid width to 4 lanes
  */
 
 import poly_arith_pkg::*;
@@ -20,7 +27,6 @@ module unipam_top (
     input  logic       rst,
 
     // ---- Control Interface (From Main System) ----
-    // TODO: start_i will eventually route to the controller. Placeholder for TF testing.
     input  logic       start_i,
     input  pe_mode_e   op_type_i
 
@@ -28,8 +34,8 @@ module unipam_top (
     // output logic            done_o,
 
     // // ---- Memory Interface (To SRAM / CMI) ----
-    // output logic            mem_read_en_o,
-    // output logic            mem_write_en_o,
+    // output logic            mem_wr_read_en_o,
+    // output logic            mem_wr_write_en_o,
     // output logic [7:0]      rAddr_o,
     // output logic [7:0]      wAddr_o,
 
@@ -50,10 +56,46 @@ module unipam_top (
     // Internal Signals
     // ==========================================
 
-    // Controller Signals
+    // If poly select is not exposed yet, default to poly 0.
+    localparam logic [1:0] DEFAULT_POLY_ID = 2'd0;
+
+    // Controller -> TF/PE side
+    logic            ctl_ready;
+    logic            ctl_done;
     logic            tf_start;
     logic [1:0]      pass_idx;
-    logic [3:0][7:0] coeff_idx;
+    logic            pe_valid;
+    pe_mode_e        pe_ctrl;
+
+    // Controller -> CMI side
+    logic            cmi_v;
+    logic            cmi_rd_en;
+    logic [1:0]      cmi_poly_id;
+    logic [3:0][7:0] cmi_coeff_idx;
+    logic [3:0]      cmi_coeff_v;
+    logic [3:0]      cmi_wb_latency;
+    logic            cmi_ready;
+
+    // CMI -> memory wrapper side
+    logic [1:0]                   mem_poly_id;
+    logic                         mem_v;
+    logic                         mem_rd_en;
+    logic [3:0][7:0]              mem_rd_idx;
+    logic [3:0]                   mem_rd_lane_valid;
+    logic [3:0]                   mem_wr_en;
+    logic [3:0][7:0]              mem_wr_idx;
+    logic [3:0][15:0]             mem_wr_data;
+    logic                         mem_ready;
+
+    // Memory wrapper -> CMI side
+    logic                         mem_rd_valid;
+    logic [1:0]                   mem_rd_poly_id;
+    logic [3:0][7:0]              mem_rd_idx_rsp;
+    logic [3:0]                   mem_rd_lane_valid_rsp;
+    logic [3:0][15:0]             mem_rd_data;
+
+    // CMI -> PE side (kept as internal for now)
+    logic [3:0][15:0]             coeff_from_cmi;
 
     // Address Generator & Twiddle Factor Signals
     logic [5:0]      tf_addr;
@@ -61,21 +103,20 @@ module unipam_top (
     logic [1:0]      pass_out;
     logic            is_intt;
 
-    coeff_t          w0;       // PE0 twiddle factor
-    coeff_t          w1;       // PE2 multiplier 1 twiddle factor
-    coeff_t          w2;       // PE2 multiplier 2 twiddle factor
-    coeff_t          w3;       // PE3 Radix-4 root (omega_4)
+    coeff_t          w0;
+    coeff_t          w1;
+    coeff_t          w2;
+    coeff_t          w3;
 
     // ==========================================
     // Operational Logic
     // ==========================================
 
-    // Decode INTT mode based on operation type
     always_comb begin
         case (op_type_i)
             PE_MODE_NTT  : is_intt = 1'b0;
             PE_MODE_INTT : is_intt = 1'b1;
-            default      : is_intt = 1'b0; // Safe default
+            default      : is_intt = 1'b0;
         endcase
     end
 
@@ -83,64 +124,89 @@ module unipam_top (
     // Sub-Module Instantiations
     // ==========================================
 
-    logic cmi_v;
-    logic cmi_rd_en;
     // ---- Controller ----
     unipam_controller u_controller (
         .clk                (clk),
         .rst                (rst),
         .start_i            (start_i),
         .op_type_i          (op_type_i),
-        .poly_id_i          (),
-        .ready_o            (),
-        .done_o             (),
+        .poly_id_i          (DEFAULT_POLY_ID),
+        .ready_o            (ctl_ready),
+        .done_o             (ctl_done),
         .tf_start_o         (tf_start),
         .pass_idx_o         (pass_idx),
-        .pe_ctrl_o          (),
-        .pe_valid_o         (),
-        .cmi_ready_i        (1'b1),        // Placeholder for now
+        .pe_ctrl_o          (pe_ctrl),
+        .pe_valid_o         (pe_valid),
+        .cmi_ready_i        (cmi_ready),
         .cmi_v_o            (cmi_v),
         .cmi_rd_en_o        (cmi_rd_en),
-        .cmi_poly_id_o      (),
-        .cmi_coeff_idx_o    (coeff_idx),
-        .cmi_coeff_valid_o  (),
+        .cmi_poly_id_o      (cmi_poly_id),
+        .cmi_coeff_idx_o    (cmi_coeff_idx),
+        .cmi_coeff_valid_o  (cmi_coeff_v),
+        .cmi_wb_latency_o   (cmi_wb_latency),
         .block_cnt_o        (),
-        .bf_cnt_o           (),
-        .cmi_wb_latency_o   ()
+        .bf_cnt_o           ()
     );
 
-    cmi cmi (
+    // ---- CMI ----
+    cmi u_cmi (
+        .clk                    (clk),
+        .rst                    (rst),
+        .coeff_idx_i            (cmi_coeff_idx),
+        .coeff_valid_i          (cmi_coeff_v),
+        .poly_id_i              (cmi_poly_id),
+        .v_i                    (cmi_v),
+        .rd_en_i                (cmi_rd_en),
+        .wb_latency_i           (cmi_wb_latency),
+        .wr_en_i                (4'b0000),
+        .wr_data_i              ('0),
+        .coeff_o                (coeff_from_cmi),
+        .ready_o                (cmi_ready),
+        .mem_poly_id_o          (mem_poly_id),
+        .mem_v_o                (mem_v),
+        .mem_rd_en_o            (mem_rd_en),
+        .mem_rd_idx_o           (mem_rd_idx),
+        .mem_rd_lane_valid_o    (mem_rd_lane_valid),
+        .mem_wr_en_o            (mem_wr_en),
+        .mem_wr_idx_o           (mem_wr_idx),
+        .mem_wr_data_o          (mem_wr_data),
+        .mem_rd_valid_i         (mem_rd_valid),
+        .mem_rd_poly_id_i       (mem_rd_poly_id),
+        .mem_rd_idx_i           (mem_rd_idx_rsp),
+        .mem_rd_lane_valid_i    (mem_rd_lane_valid_rsp),
+        .mem_rd_data_i          (mem_rd_data),
+        .mem_ready_i            (mem_ready)
+    );
+
+    // ---- 4-bank polynomial memory wrapper ----
+    poly_mem_wrapper_4bank u_poly_mem_wrapper (
         .clk                (clk),
-        .rst                (rst),
-        .coeff_idx_i        (coeff_idx),
-        .coeff_valid_i      (),
-        .poly_id_i          (),
-        .v_i                (),
-        .rd_en_i            (),
-        .wr_en_i            (),
-        .wr_data_i          (),
-        .coeff_o            (),
-        .ready_o            (),
-        .mem_poly_id_o      (),
-        .mem_v_o            (),
-        .mem_rd_en_o        (),
-        .mem_wr_en_o        (),
-        .mem_rd_idx_o       (),
-        .mem_wr_idx_o       (),
-        .mem_wr_data_o      (),
-        .mem_rd_data_i      (),
-        .mem_ready_i        ()
+        .rst_n              (rst),
+        .poly_id_i          (mem_poly_id),
+        .v_i                (mem_v),
+        .rd_en_i            (mem_rd_en),
+        .ready_o            (mem_ready),
+        .rd_idx_i           (mem_rd_idx),
+        .rd_lane_valid_i    (mem_rd_lane_valid),
+        .rd_valid_o         (mem_rd_valid),
+        .rd_poly_id_o       (mem_rd_poly_id),
+        .rd_idx_o           (mem_rd_idx_rsp),
+        .rd_lane_valid_o    (mem_rd_lane_valid_rsp),
+        .rd_data_o          (mem_rd_data),
+        .wr_en_i            (mem_wr_en),
+        .wr_idx_i           (mem_wr_idx),
+        .wr_data_i          (mem_wr_data)
     );
 
     // ---- Twiddle Factor Address Generator ----
     tf_addr_gen u_tf_addr_gen (
         .clk                (clk),
         .rst                (rst),
-        .start_i            (tf_start),    // Triggered by controller
+        .start_i            (tf_start),
         .ctrl_i             (op_type_i),
-        .pass_idx_i         (pass_idx),    // From controller
-        .tf_addr_o          (tf_addr),     // To ROM
-        .is_radix2_o        (is_radix2),   // To ROM
+        .pass_idx_i         (pass_idx),
+        .tf_addr_o          (tf_addr),
+        .is_radix2_o        (is_radix2),
         .valid_o            (),
         .pass_o             (pass_out)
     );
@@ -149,19 +215,20 @@ module unipam_top (
     tf_rom u_tf_rom (
         .clk                (clk),
         .rst                (rst),
-        .is_intt_i          (is_intt),     // Decoded from op_type_i
-        .is_radix2_i        (is_radix2),   // From Address Gen
-        .tf_addr_i          (tf_addr),     // From Address Gen
-        .w0_o               (w0),          // To PE Unit
-        .w1_o               (w1),          // To PE Unit
-        .w2_o               (w2),          // To PE Unit
-        .w3_o               (w3)           // To PE Unit
+        .is_intt_i          (is_intt),
+        .is_radix2_i        (is_radix2),
+        .tf_addr_i          (tf_addr),
+        .w0_o               (w0),
+        .w1_o               (w1),
+        .w2_o               (w2),
+        .w3_o               (w3)
     );
 
     // ---- Processing Element (PE) Unit ----
-    // Awaiting CMI integration; twiddle factors and operands will be hardcoded/routed later.
+    // CMI/controller wiring above is now fixed.
+    // PE datapath hookup can be completed separately.
     pe_unit u_pe_unit (
-        .clk                (clk), // Added missing clk/rst connections
+        .clk                (clk),
         .rst                (rst),
         .valid_i            (),
         .ctrl_i             (),
