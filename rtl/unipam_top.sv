@@ -97,6 +97,12 @@ module unipam_top (
     // CMI -> PE side (kept as internal for now)
     logic [3:0][15:0]             coeff_from_cmi;
 
+    // PE
+    coeff_t z0_o;
+    coeff_t z1_o;
+    coeff_t z2_o;
+    coeff_t z3_o;
+
     // Address Generator & Twiddle Factor Signals
     logic [5:0]      tf_addr;
     logic            is_radix2;
@@ -149,6 +155,7 @@ module unipam_top (
     );
 
     // ---- CMI ----
+    // NEED TO ADD POLY BANK B FOR ADD/SUB
     cmi u_cmi (
         .clk                    (clk),
         .rst                    (rst),
@@ -225,26 +232,27 @@ module unipam_top (
     );
 
     // ---- Processing Element (PE) Unit ----
-    // CMI/controller wiring above is now fixed.
-    // PE datapath hookup can be completed separately.
+    // NEED TO ADD MUXING FOR ADD/SUB FOR OP_B
+    // CURRENTLY WIRED FOR NTT ONLY..
+
     pe_unit u_pe_unit (
         .clk                (clk),
         .rst                (rst),
-        .valid_i            (),
-        .ctrl_i             (),
-        .mode_i             (),
-        .op_a0_i            (),
-        .op_a1_i            (),
-        .op_a2_i            (),
-        .op_a3_i            (),
-        .op_b0_i            (),
-        .op_b1_i            (),
-        .op_b2_i            (),
-        .op_b3_i            (),
-        .z0_o               (),
-        .z1_o               (),
-        .z2_o               (),
-        .z3_o               (),
+        .valid_i            (pe_valid),
+        .ctrl_i             (pe_ctrl),
+        .mode_i             (is_radix2),
+        .op_a0_i            (mem_rd_data[0][COEFF_WIDTH-1:0]),
+        .op_a1_i            (mem_rd_data[1][COEFF_WIDTH-1:0]),
+        .op_a2_i            (mem_rd_data[2][COEFF_WIDTH-1:0]),
+        .op_a3_i            (mem_rd_data[3][COEFF_WIDTH-1:0]),
+        .op_b0_i            (w0),
+        .op_b1_i            (w1),
+        .op_b2_i            (w2),
+        .op_b3_i            (w3),
+        .z0_o               (z0_o),
+        .z1_o               (z1_o),
+        .z2_o               (z2_o),
+        .z3_o               (z3_o),
         .valid_o            ()
     );
 
