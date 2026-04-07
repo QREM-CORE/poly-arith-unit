@@ -27,4 +27,3 @@ rtl/pe_unit.sv
 
 # --- PAU Controller ---
 rtl/pau_controller.sv
-rtl/pau_top.sv
