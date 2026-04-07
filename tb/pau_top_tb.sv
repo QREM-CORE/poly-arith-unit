@@ -2,7 +2,7 @@
 
 import poly_arith_pkg::*;
 
-module unipam_top_tb;
+module pau_top_tb;
 
     logic       clk;
     logic       rst;
@@ -10,7 +10,7 @@ module unipam_top_tb;
     pe_mode_e   op_type_i;
 
     // Correctly mapped all ports
-    unipam_top DUT (
+    pau_top DUT (
         .clk        (clk),
         .rst        (rst),
         .start_i    (start_i),

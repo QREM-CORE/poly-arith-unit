@@ -10,7 +10,7 @@
  * doi: 10.1109/OJCAS.2025.3591136. (Inha University)
  *
  * Description:
- * This module implements the Multiply-Accumulate (MAC) adder for the UniPAM
+ * This module implements the Multiply-Accumulate (MAC) adder for the PAU
  * architecture. It enables the seamless transition from Coordinate-Wise
  * Multiplication (CWM) mode to MAC mode, which is essential for matrix-vector
  * multiplications in ML-KEM (e.g., t_hat = A_hat ∘ s_hat + e in NTT domain).
