@@ -11,7 +11,7 @@
  *
  * Description:
  * Processing Element 1 (PE1) acts as the complementary arithmetic unit to PE0
- * in the Unified Polynomial Arithmetic Module (UniPAM). Unlike the other PEs,
+ * in the Polynomial Arithmetic Unit (PAU). Unlike the other PEs,
  * PE1 does not contain any modular multipliers. Instead, it features a modular
  * adder and a unified modular adder/subtractor to handle complex addition
  * cross-terms required in higher-radix butterflies and Karatsuba multiplication.

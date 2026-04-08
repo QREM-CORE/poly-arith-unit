@@ -1,5 +1,5 @@
 /*
- * Module Name: unipam_top
+ * Module Name: pau_top
  * Author(s): Jessica Buentipo
  * Target: FIPS 203 (ML-KEM / Kyber) Hardware Accelerator
  *
@@ -10,7 +10,7 @@
  * doi: 10.1109/OJCAS.2025.3591136. (Inha University)
  *
  * Description:
- * Top module for the whole UNIPAM system.
+ * Top module for the whole PAU system.
  *
  * Wire fixes in this version:
  *   - fixed missing comma in top-level port list
@@ -22,7 +22,7 @@
 
 import poly_arith_pkg::*;
 
-module unipam_top (
+module pau_top (
     input  logic       clk,
     input  logic       rst,
 
@@ -131,7 +131,7 @@ module unipam_top (
     // ==========================================
 
     // ---- Controller ----
-    unipam_controller u_controller (
+    pau_controller u_controller (
         .clk                (clk),
         .rst                (rst),
         .start_i            (start_i),

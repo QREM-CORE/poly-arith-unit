@@ -17,7 +17,7 @@
 
 import poly_arith_pkg::*;
 
-module unipam_controller_tb;
+module pau_controller_tb;
 
     // -------------------------------------------------------------------------
     // DUT signals
@@ -47,7 +47,7 @@ module unipam_controller_tb;
     // -------------------------------------------------------------------------
     // DUT
     // -------------------------------------------------------------------------
-    unipam_controller dut (
+    pau_controller dut (
         .clk            (clk),
         .rst            (rst),
         .start_i        (start_i),
@@ -303,7 +303,7 @@ module unipam_controller_tb;
     // -------------------------------------------------------------------------
     initial begin
         $display("==================================================");
-        $display("Starting unipam_controller testbench");
+        $display("Starting pau_controller testbench");
         $display("==================================================");
 
         test_reset_idle();

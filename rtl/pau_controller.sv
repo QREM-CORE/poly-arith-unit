@@ -1,5 +1,5 @@
 /*
- * Module Name: unipam_controller
+ * Module Name: pau_controller
  * Author(s): Jessica Buentipo
  * Target: FIPS 203 (ML-KEM / Kyber) Hardware Accelerator
  *
@@ -10,12 +10,12 @@
  * doi: 10.1109/OJCAS.2025.3591136. (Inha University)
  *
  * Description:
- * The unipam_controller is the central control unit of UNIPAM. It orchestrates
+ * The pau_controller is the central control unit of PAU. It orchestrates
  * data movement, computation scheduling, and pipeline synchronization across
  * the PEs, memory, and tf subsystem.
  *
  * Functionality:
- * 1. UNIPAM controller begins execution when start_i is asserted.
+ * 1. PAU controller begins execution when start_i is asserted.
  * 2. op_type_i is latched at job start.
  * 3. Supported modes include NTT, INTT, CWM, Compression/Decompression, Add/Sub.
  *    Operation type pe_ctrl_o is sent to pe_unit.
@@ -23,7 +23,7 @@
 
 import poly_arith_pkg::*;
 
-module unipam_controller (
+module pau_controller (
     input  logic             clk,
     input  logic             rst,
 
