@@ -60,6 +60,7 @@ module tf_rom (
     // ---- Control ----
     input   logic           is_intt_i,      // 1 = INTT mode
     input   logic           is_radix2_i,    // 1 = Radix-2 pass
+    input   logic           is_cwm_i,       // 1 = CWM mode (single omega stream)
 
     // ---- Address Inputs ----
     input   logic [5:0]     tf_addr_i,      // Unified ROM address (0..63)
@@ -177,6 +178,7 @@ module tf_rom (
     // =========================================================================
     logic [35:0] r4_data;
     logic [11:0] r2_data;
+    logic [11:0] cwm_data;
 
     // HARDWARE CLAMP: Protects the 21-element R4 ROM from Out-of-Bounds access
     // by forcing the address to 0 during Radix-2 passes (where tf_addr_i goes up to 63).
@@ -189,6 +191,10 @@ module tf_rom (
     // Radix-2 ROM read (Safely uses the full 6-bit bus)
     assign r2_data = is_intt_i ? OMEGA_INV_ROM[tf_addr_i] : OMEGA_ROM[tf_addr_i];
 
+    // CWM uses the forward 64-entry omega stream addressed by block index.
+    // It is not a radix-4 pass, even though pass_is_radix2 stays low in the controller.
+    assign cwm_data = OMEGA_ROM[tf_addr_i];
+
     // Unpack the 36-bit Radix-4 word into three 12-bit twiddle factors
     coeff_t r4_w1, r4_w2, r4_w3;
     assign r4_w1 = r4_data[35:24];  // w1 / w1^-1_neg
@@ -198,6 +204,7 @@ module tf_rom (
     // =========================================================================
     // Output Multiplexing & Registration (1 Clock Cycle Read Latency)
     // =========================================================================
+    // CWM    : w0 = omega, w1 = 0, w2 = 0
     // Radix-4: w0 = w2 (Stage B→PE0), w1 = w1 (Stage A top→PE2 W1),
     //          w2 = w3 (Stage A bot→PE2 W2)
     // Radix-2: w0 = omega (PE0), w1 = 1|1665 (PE2 W1 constant),
@@ -206,6 +213,11 @@ module tf_rom (
     always_ff @(posedge clk) begin
         if (rst) begin
             w0_o <= '0;
+            w1_o <= '0;
+            w2_o <= '0;
+        end else if (is_cwm_i) begin
+            // CWM mode: PE_Unit only consumes op_b0_i as the per-block omega.
+            w0_o <= cwm_data;
             w1_o <= '0;
             w2_o <= '0;
         end else if (is_radix2_i) begin
@@ -234,6 +246,9 @@ module tf_rom (
 
     always_ff @(posedge clk) begin
         if (rst) begin
+            w3_o <= '0;
+        end else if (is_cwm_i) begin
+            // Unused in CWM; drive 0 so the waveform is less misleading.
             w3_o <= '0;
         end else begin
             w3_o <= is_intt_i ? OMEGA_4_INTT : OMEGA_4_NTT;

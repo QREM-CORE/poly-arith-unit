@@ -12,12 +12,12 @@
  * Description:
  * Top module for the whole PAU system.
  *
- * Wire fixes in this version:
- *   - fixed missing comma in top-level port list
- *   - fixed controller -> CMI ready handshake (no longer tied to 1'b1)
- *   - fixed CMI instance to use current mem_* port names
- *   - fixed output-output short between cmi.ready_o and wrapper.ready_o
- *   - fixed cmi_coeff_valid width to 4 lanes
+ * This modified version adds PE -> CMI -> memory writeback plumbing.
+ * Notes:
+ *   - Writeback is enabled for NTT / INTT / ADDSUB / COMP / DECOMP.
+ *   - CWM writeback is intentionally disabled here because the two valid outputs
+ *     (z1_o, z2_o) do not map 1:1 onto the 4 delayed read indices yet.
+ *   - PE op_a inputs now come from coeff_from_cmi rather than raw mem_rd_data.
  */
 
 import poly_arith_pkg::*;
@@ -94,20 +94,24 @@ module pau_top (
     logic [3:0]                   mem_rd_lane_valid_rsp;
     logic [3:0][15:0]             mem_rd_data;
 
-    // CMI -> PE side (kept as internal for now)
+    // CMI -> PE side
     logic [3:0][15:0]             coeff_from_cmi;
 
-    // PE
+    // PE outputs
     coeff_t z0_o;
     coeff_t z1_o;
     coeff_t z2_o;
     coeff_t z3_o;
+    logic   pe_wb_valid;
+    logic [3:0]                   pe_wb_en;
+    logic [3:0][15:0]  pe_wb_data;
 
     // Address Generator & Twiddle Factor Signals
     logic [5:0]      tf_addr;
     logic            is_radix2;
     logic [1:0]      pass_out;
     logic            is_intt;
+    logic            is_cwm;
 
     coeff_t          w0;
     coeff_t          w1;
@@ -120,10 +124,46 @@ module pau_top (
 
     always_comb begin
         case (op_type_i)
-            PE_MODE_NTT  : is_intt = 1'b0;
-            PE_MODE_INTT : is_intt = 1'b1;
-            default      : is_intt = 1'b0;
+            PE_MODE_NTT  : begin
+                is_intt = 1'b0;
+                is_cwm  = 1'b0;
+            end
+            PE_MODE_INTT : begin
+                is_intt = 1'b1;
+                is_cwm  = 1'b0;
+            end
+            PE_MODE_CWM  : begin
+                is_intt = 1'b0;
+                is_cwm  = 1'b1;
+            end
+            default      : begin
+                is_intt = 1'b0;
+                is_cwm  = 1'b0;
+            end
         endcase
+    end
+
+    // ----------------------------------------------------------
+    // PE writeback packing
+    // ----------------------------------------------------------
+    always_comb begin
+        pe_wb_data[0] = {4'b0000, z0_o};
+        pe_wb_data[1] = {4'b0000, z1_o};
+        pe_wb_data[2] = {4'b0000, z2_o};
+        pe_wb_data[3] = {4'b0000, z3_o};
+        pe_wb_en      = 4'b0000;
+
+        if (pe_wb_valid) begin
+            unique case (pe_ctrl)
+                PE_MODE_NTT,
+                PE_MODE_INTT,
+                PE_MODE_ADDSUB,
+                PE_MODE_COMP,
+                PE_MODE_DECOMP: pe_wb_en = 4'b1111;
+                PE_MODE_CWM:    pe_wb_en = 4'b0000;
+                default:        pe_wb_en = 4'b0000;
+            endcase
+        end
     end
 
     // ==========================================
@@ -165,8 +205,8 @@ module pau_top (
         .v_i                    (cmi_v),
         .rd_en_i                (cmi_rd_en),
         .wb_latency_i           (cmi_wb_latency),
-        .wr_en_i                (4'b0000),
-        .wr_data_i              ('0),
+        .wr_en_i                (pe_wb_en),
+        .wr_data_i              (pe_wb_data),
         .coeff_o                (coeff_from_cmi),
         .ready_o                (cmi_ready),
         .mem_poly_id_o          (mem_poly_id),
@@ -224,6 +264,7 @@ module pau_top (
         .rst                (rst),
         .is_intt_i          (is_intt),
         .is_radix2_i        (is_radix2),
+        .is_cwm_i           (is_cwm),
         .tf_addr_i          (tf_addr),
         .w0_o               (w0),
         .w1_o               (w1),
@@ -233,18 +274,17 @@ module pau_top (
 
     // ---- Processing Element (PE) Unit ----
     // NEED TO ADD MUXING FOR ADD/SUB FOR OP_B
-    // CURRENTLY WIRED FOR NTT ONLY..
-
+    // CURRENTLY WIRED FOR NTT ONLY.
     pe_unit u_pe_unit (
         .clk                (clk),
         .rst                (rst),
         .valid_i            (pe_valid),
         .ctrl_i             (pe_ctrl),
         .mode_i             (is_radix2),
-        .op_a0_i            (mem_rd_data[0][COEFF_WIDTH-1:0]),
-        .op_a1_i            (mem_rd_data[1][COEFF_WIDTH-1:0]),
-        .op_a2_i            (mem_rd_data[2][COEFF_WIDTH-1:0]),
-        .op_a3_i            (mem_rd_data[3][COEFF_WIDTH-1:0]),
+        .op_a0_i            (coeff_from_cmi[0][COEFF_WIDTH-1:0]),
+        .op_a1_i            (coeff_from_cmi[1][COEFF_WIDTH-1:0]),
+        .op_a2_i            (coeff_from_cmi[2][COEFF_WIDTH-1:0]),
+        .op_a3_i            (coeff_from_cmi[3][COEFF_WIDTH-1:0]),
         .op_b0_i            (w0),
         .op_b1_i            (w1),
         .op_b2_i            (w2),
@@ -253,7 +293,7 @@ module pau_top (
         .z1_o               (z1_o),
         .z2_o               (z2_o),
         .z3_o               (z3_o),
-        .valid_o            ()
+        .valid_o            (pe_wb_valid)
     );
 
 endmodule
