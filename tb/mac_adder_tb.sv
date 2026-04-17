@@ -7,7 +7,7 @@
 // Description:
 // Comprehensive standalone verification of the mac_adder module.
 // Tests both lanes independently and together across:
-//   - Init mode (passthrough, j=0)
+//   - First-term mode (passthrough, j=0)
 //   - Accumulate mode (modular addition, j>0)
 //   - Boundary values (0, Q-1, wraparound)
 //   - Multi-step accumulation sequences (simulating k iterations)
@@ -31,7 +31,7 @@ module mac_adder_tb();
     logic       rst;
 
     // DUT Inputs
-    logic       init_i;
+    logic       first_term_i;
     logic       valid_i;
     coeff_t     a0_i, b0_i;
     coeff_t     a1_i, b1_i;
@@ -69,7 +69,7 @@ module mac_adder_tb();
     mac_adder dut (
         .clk        (clk),
         .rst        (rst),
-        .init_i     (init_i),
+        .first_term_i(first_term_i),
         .valid_i    (valid_i),
         .a0_i       (a0_i),
         .b0_i       (b0_i),
@@ -98,13 +98,13 @@ module mac_adder_tb();
         input coeff_t   b0,     // Partial sum lane 0
         input coeff_t   a1,     // New CWM result lane 1
         input coeff_t   b1,     // Partial sum lane 1
-        input logic     init,   // 1 = passthrough, 0 = accumulate
+        input logic     first_term,   // 1 = passthrough, 0 = accumulate
         input string    name
     );
         expected_result_t exp;
 
-        // Golden model: init selects passthrough vs accumulate
-        if (init) begin
+        // Golden model: first_term selects passthrough vs accumulate.
+        if (first_term) begin
             exp.z0 = a0;
             exp.z1 = a1;
         end else begin
@@ -118,7 +118,7 @@ module mac_adder_tb();
         // Drive inputs
         @(posedge clk);
         valid_i <= 1'b1;
-        init_i  <= init;
+        first_term_i <= first_term;
         a0_i    <= a0;
         b0_i    <= b0;
         a1_i    <= a1;
@@ -131,7 +131,7 @@ module mac_adder_tb();
     task automatic flush_pipeline();
         @(posedge clk);
         valid_i <= 1'b0;
-        init_i  <= 1'b0;
+        first_term_i <= 1'b0;
         a0_i    <= '0;
         b0_i    <= '0;
         a1_i    <= '0;
@@ -159,7 +159,7 @@ module mac_adder_tb();
             new_a1 = $urandom_range(0, MODULUS - 1);
 
             if (j == 0) begin
-                // First iteration: init passthrough, b_i is don't-care
+                // First iteration: first-term passthrough, b_i is don't-care
                 drive_mac(new_a0, 12'd0, new_a1, 12'd0, 1'b1,
                           $sformatf("%s [j=%0d/%0d INIT]", name, j, k));
                 acc0 = new_a0;
@@ -210,7 +210,7 @@ module mac_adder_tb();
         // Initialize
         rst     = 1;
         valid_i = 0;
-        init_i  = 0;
+        first_term_i  = 0;
         a0_i = 0; b0_i = 0;
         a1_i = 0; b1_i = 0;
 

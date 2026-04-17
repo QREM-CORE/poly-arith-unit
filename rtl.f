@@ -12,7 +12,9 @@ rtl/mod_uni_add_sub.sv
 rtl/delay_n.sv
 
 # --- MAC Adder ---
+rtl/mac_pair_add.sv
 rtl/mac_adder.sv
+rtl/mac_row_accum.sv
 
 # --- Twiddle Factor Generation ---
 rtl/tf_rom.sv
@@ -27,3 +29,6 @@ rtl/pe_unit.sv
 
 # --- PAU Controller ---
 rtl/pau_controller.sv
+
+# --- Top Level ---
+rtl/pau_top.sv

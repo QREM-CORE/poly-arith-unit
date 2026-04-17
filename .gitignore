@@ -4,3 +4,4 @@ transcript
 *.macro
 *.log
 *.txt
+!doc/QUARDINS_ATTEMPTED_UPDATES.txt

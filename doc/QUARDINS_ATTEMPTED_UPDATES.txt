@@ -1,0 +1,275 @@
+Quardin's Attempted Updates
+===========================
+
+Branch note
+-----------
+The requested branch name was "Quardin's attempted updates", but Git branch
+names cannot safely contain that apostrophe/space combination in this repo
+workflow. The created branch name is:
+
+    quardins-attempted-updates
+
+
+Why this branch exists
+----------------------
+This branch experiments with a scratchpad-backed MAC accumulator inside the
+PAU. The main goal is to stop the old CWM flow from starving shared memory.
+
+Old idea:
+    For each new CWM result pair, read old t_acc from shared memory,
+    add to it, then write updated t_acc back to shared memory.
+
+That old flow made CWM extremely memory hungry:
+    read A_ij
+    read s_j
+    read old t_acc
+    write new t_acc
+
+New idea:
+    Keep the running row sum inside the PAU in a local scratchpad, then
+    drain the completed row back to shared memory only once.
+
+This lets the CWM accumulation phase become mostly read-only from the point of
+view of shared polynomial memory:
+    read A_ij
+    read s_j
+    accumulate locally
+
+Then, during drain:
+    read e_hat
+    fuse scratch + e_hat
+    write final t_hat
+
+
+High-level architecture change
+------------------------------
+The new flow is row-wise:
+
+1. CWM accumulates one output row inside a local scratch polynomial.
+2. The first CWM term seeds the scratch entry for that coefficient pair.
+3. Later CWM terms are modularly added into the same scratch entry.
+4. When the row is complete, the scratch polynomial is drained.
+5. During drain, e_hat is read from memory and fused on the fly.
+6. The drained result is the final t_hat row written back to memory.
+
+This means:
+    t_hat = (sum_j A_ij o s_j) + e_i_hat
+
+is produced without repeatedly reading and writing t_acc on every CWM step.
+
+
+Files changed
+-------------
+1. rtl/mac_pair_add.sv
+   New pure combinational helper.
+   Purpose:
+       Two-lane modular add datapath only.
+   Why:
+       The old mac_adder mixed arithmetic, bypass semantics, and output
+       registration together. This helper separates the arithmetic so it can
+       be reused cleanly.
+
+2. rtl/mac_row_accum.sv
+   New scratchpad-backed row accumulator.
+   Purpose:
+       Store one full polynomial (128 coefficient pairs) locally inside the
+       PAU during CWM row accumulation.
+   Key behavior:
+       - first_term_i = 1:
+           overwrite scratch[pair_idx] with current CWM pair
+       - first_term_i = 0:
+           scratch[pair_idx] = scratch[pair_idx] + current CWM pair
+       - drain:
+           emit stored pair, optionally fused with e_hat
+   Why:
+       This is the main structural change that removes the repeated shared
+       memory read-modify-write loop during CWM.
+
+3. rtl/mac_adder.sv
+   Refactored legacy wrapper.
+   Purpose:
+       Keep a registered 2-lane MAC-style block for old tests and simple use.
+   Key change:
+       init_i was replaced by first_term_i.
+   Why:
+       The old semantics were mentally awkward because the true accumulation
+       happened when init_i was low. first_term_i is much easier to reason
+       about:
+           first_term_i = 1 -> seed/overwrite
+           first_term_i = 0 -> accumulate
+
+4. rtl/pau_controller.sv
+   Extended with row-accumulator control signals.
+   New control outputs:
+       mac_issue_o
+       mac_first_term_o
+       mac_pair_idx_o
+       mac_drain_issue_o
+       mac_drain_idx_o
+       mac_fuse_e_o
+   Why:
+       The PAU controller now has to do more than issue CWM reads. It must
+       also manage the row-local accumulate phase and the drain phase.
+   Important change:
+       CWM now bypasses the old block/butterfly counter behavior in S_RUN.
+       Instead:
+           - S_RUN issues 128 pair reads for one row
+           - S_DRAIN drains 128 accumulated pairs back to memory
+
+5. rtl/pau_top.sv
+   Wired in the new scratch accumulator path.
+   Purpose:
+       Connect PE CWM outputs into mac_row_accum and use the drain output as
+       the writeback source during the row-finalization phase.
+   Important note:
+       This branch also makes the CWM timing alignment more explicit by
+       adding delayed control/data helpers already implied by the existing
+       CWM integration testbench.
+
+6. tb/mac_adder_tb.sv
+   Updated naming from init_i to first_term_i.
+
+7. tb/cwm_mac_integration_tb.sv
+   Updated naming from init-style control to first_term-style control.
+
+8. rtl.f
+   Updated build file list so the new MAC modules and pau_top are visible to
+   repo-level compile flows.
+
+
+How the new MAC path works, step by step
+----------------------------------------
+The new dataflow is easiest to understand for one output row i.
+
+Assume:
+    row i needs A_i0, A_i1, ..., A_i(k-1)
+    and resident s_hat polynomials s_0_hat ... s_(k-1)_hat
+
+Accumulation phase:
+    j = 0:
+        CWM(A_i0, s_0_hat) produces one coefficient pair per cycle.
+        first_term_i = 1
+        scratch[pair_idx] = current CWM pair
+
+    j = 1..k-1:
+        CWM(A_ij, s_j_hat) produces the next pair.
+        first_term_i = 0
+        scratch[pair_idx] = scratch[pair_idx] + current CWM pair mod q
+
+Drain phase:
+    For pair_idx = 0..127:
+        read scratch[pair_idx]
+        read matching e_i_hat pair from memory
+        compute final_pair = scratch_pair + e_hat_pair mod q
+        write final_pair back to polynomial memory as t_i_hat
+
+So the scratch polynomial is:
+    temporary local row sum during CWM
+
+and the drained result is:
+    final t_i_hat
+
+
+How the PAU controller is affected
+----------------------------------
+The PAU controller becomes more row-oriented.
+
+Old mental model:
+    issue CWM
+    re-read old t_acc from memory
+    update t_acc in memory
+    repeat
+
+New mental model:
+    issue all CWM pairs for one row into local scratch
+    then drain the row once
+
+The new controller responsibilities are:
+    - track which pair index is currently being accumulated
+    - assert first_term only for the first CWM pass of the row
+    - start the drain phase after the last pair is accumulated
+    - walk through the drain indices until the full row is written back
+
+Controller state impact:
+    S_RUN:
+        for CWM, acts as the row accumulation issue phase
+    S_DRAIN:
+        for CWM, acts as the row drain/finalize phase
+
+
+How this helps memory bandwidth
+-------------------------------
+Biggest benefit:
+    shared polynomial memory no longer needs to hold the running t_acc during
+    every CWM pair update.
+
+Before:
+    every later accumulation step needed an old partial sum read and a new
+    partial sum write
+
+After:
+    the running partial sum is trapped locally inside the PAU
+
+This means CWM is much closer to:
+    read A
+    read s
+    compute locally
+
+which leaves more shared-memory opportunity for HSU / Transcoder activity.
+
+
+Important limitations of this branch
+------------------------------------
+This branch is intentionally focused on the MAC / scratchpad architecture.
+It does not solve every PAU integration issue yet.
+
+Known limitations:
+1. The true dual-source CWM memory path is still unfinished.
+   The controller/top now expose the correct row-accumulator structure, but
+   the memory side still needs richer support for independently sourcing A_ij
+   and s_j in the final architecture.
+
+2. pau_top still defaults poly selection to a simple placeholder poly ID.
+   A real KeyGen/Encaps/Decaps controller will need wider and more explicit
+   polynomial slot control.
+
+3. The new drain path currently assumes a simple 1-cycle read-response model
+   from the existing memory path.
+
+4. The new row accumulator is one row deep.
+   That means:
+       row i must finish draining before row i+1 can begin accumulating
+   A future optimization would be a 2-entry ping-pong scratch design.
+
+5. Some older directed tests and top-level integration code in the repo still
+   reflect earlier interface assumptions and may need follow-up cleanup.
+
+
+Design choices that were intentional
+------------------------------------
+1. e_hat stays in memory
+   We intentionally did not preload e_hat into the scratch accumulator.
+   That keeps the scratch logic simpler and lets the final +e_hat happen while
+   data is already in flight during drain.
+
+2. first_term_i is positive logic
+   This branch avoids the old "accumulate when control is low" feel.
+
+3. The new modules are commented heavily on purpose
+   The point of this branch is not just to experiment, but to leave behind a
+   readable architectural stepping stone for later cleanup.
+
+
+Recommended next steps
+----------------------
+1. Finish the real dual-source CWM memory interface so A_ij and s_j can be
+   fetched cleanly for row-wise operation.
+
+2. Teach the top-level algorithm controller to drive row-based CWM jobs with
+   explicit A-row staging and e-row drain/writeback.
+
+3. Consider a ping-pong row accumulator if overlapping drain of row i with
+   accumulation of row i+1 becomes important.
+
+4. Revisit memory arbitration after the PAU row accumulator path is stable, so
+   HSU / Transcoder overlap can be exploited safely.

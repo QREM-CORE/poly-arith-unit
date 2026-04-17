@@ -19,6 +19,9 @@
  * 2. op_type_i is latched at job start.
  * 3. Supported modes include NTT, INTT, CWM, Compression/Decompression, Add/Sub.
  *    Operation type pe_ctrl_o is sent to pe_unit.
+ * 4. On this branch, CWM additionally exposes a row-accumulator control plane
+ *    so pau_top can trap the running MAC sum inside a local scratch polynomial
+ *    before draining the final result back to memory.
  */
 
 import poly_arith_pkg::*;
@@ -43,6 +46,18 @@ module pau_controller (
     output pe_mode_e         pe_ctrl_o,
     output logic             pe_valid_o,
 
+    // ---- Interface to scratchpad-backed CWM row MAC ----
+    // These signals model the "issue -> accumulate locally -> drain once"
+    // architecture discussed for the row-wise PAU update. The controller
+    // still supports the original single-stream NTT/INTT/AddSub schedules.
+    output logic             mac_issue_o,
+    output logic             mac_first_term_o,
+    output logic [6:0]       mac_pair_idx_o,
+    output logic             mac_drain_issue_o,
+    output logic [6:0]       mac_drain_idx_o,
+    output logic             mac_fuse_e_o,
+    input  logic             mac_drain_accept_i,
+
     // ---- Interface to CMI ----
     input  logic             cmi_ready_i,
     output logic             cmi_v_o,
@@ -64,6 +79,7 @@ module pau_controller (
     // General architecture constants
     localparam logic [8:0] COEFFS_PER_POLY      = 9'd256;
     localparam logic [7:0] COEFFS_PER_ISSUE     = 8'd4;
+    localparam logic [6:0] CWM_PAIR_LAST        = 7'd127;
 
     // Pass indices
     localparam logic [1:0] PASS_0               = 2'd0;
@@ -148,6 +164,9 @@ module pau_controller (
     logic [3:0]    drain_cnt_r, drain_cnt_n;
     logic          drain_done;
 
+    // CWM-specific drain counter.
+    logic [6:0]    cwm_drain_idx_r, cwm_drain_idx_n;
+
     // =========================================================================
     // Streaming issue counter (for non-NTT streaming ops)
     // =========================================================================
@@ -157,6 +176,7 @@ module pau_controller (
     // Read issue / stall handling
     // =========================================================================
     logic issue_fire;
+    logic cwm_drain_issue;
 
     // =========================================================================
     // 1-cycle delay for PE valid/control to match wrapper read latency
@@ -303,7 +323,11 @@ module pau_controller (
     // =========================================================================
     // CMI issue handshake
     // =========================================================================
-    assign issue_fire = (state_r == S_RUN) && cmi_ready_i;
+    assign issue_fire      = (state_r == S_RUN) && cmi_ready_i;
+    assign cwm_drain_issue = (state_r == S_DRAIN) &&
+                             (op_r == PE_MODE_CWM) &&
+                             cmi_ready_i &&
+                             mac_drain_accept_i;
 
     // =========================================================================
     // Butterfly / stream coefficient index generation
@@ -429,7 +453,6 @@ module pau_controller (
             // -------------------------------------------------------------
             // Streaming / 4-coeff-per-cycle modes
             // -------------------------------------------------------------
-            PE_MODE_CWM,
             PE_MODE_COMP,
             PE_MODE_DECOMP,
             PE_MODE_ADDSUB: begin
@@ -438,6 +461,25 @@ module pau_controller (
                 idx1     = base_idx + IDX_OFF_1;
                 idx2     = base_idx + IDX_OFF_2;
                 idx3     = base_idx + IDX_OFF_3;
+            end
+
+            // -------------------------------------------------------------
+            // CWM row accumulation
+            //
+            // NOTE:
+            // The current PAU top-level still lacks the richer dual-source
+            // memory interface needed to fetch A_ij and s_j independently in
+            // the same cycle. The controller therefore exposes the *correct*
+            // pair index schedule for the local scratch accumulator, while
+            // the simple read index pattern below remains a placeholder until
+            // the wider CWM memory path is finished.
+            // -------------------------------------------------------------
+            PE_MODE_CWM: begin
+                base_idx = {issue_addr_r[6:0], 1'b0}; // pair_idx * 2
+                idx0     = base_idx + IDX_OFF_0;
+                idx1     = base_idx + IDX_OFF_1;
+                idx2     = ZERO8;
+                idx3     = ZERO8;
             end
 
             default: begin
@@ -459,6 +501,7 @@ module pau_controller (
         bf_cnt_n     = bf_cnt_r;
         drain_cnt_n  = drain_cnt_r;
         issue_addr_n = issue_addr_r;
+        cwm_drain_idx_n = cwm_drain_idx_r;
 
         unique case (state_r)
 
@@ -473,34 +516,62 @@ module pau_controller (
 
             S_RUN: begin
                 if (cmi_ready_i) begin
-                    if ((op_r == PE_MODE_CWM) ||
-                        (op_r == PE_MODE_COMP) ||
-                        (op_r == PE_MODE_DECOMP) ||
-                        (op_r == PE_MODE_ADDSUB)) begin
-                        issue_addr_n = issue_addr_r + 8'd1;
-                    end
-
-                    if (bf_last) begin
-                        bf_cnt_n = ZERO6;
-
-                        if (block_last) begin
-                            block_cnt_n = ZERO6;
-                            drain_cnt_n = pipe_lat;
-                            state_n     = S_DRAIN;
+                    if (op_r == PE_MODE_CWM) begin
+                        // CWM no longer uses the old block/butterfly counters
+                        // during accumulation. Instead, each read issue maps
+                        // directly to one coefficient pair in the row-local
+                        // scratch accumulator. Once all 128 pairs have been
+                        // consumed, the controller switches into the dedicated
+                        // drain phase that writes final t_hat back to memory.
+                        if (issue_addr_r[6:0] == CWM_PAIR_LAST) begin
+                            issue_addr_n    = ZERO8;
+                            cwm_drain_idx_n = 7'd0;
+                            state_n         = S_DRAIN;
                         end else begin
-                            block_cnt_n = block_cnt_r + 6'd1;
+                            issue_addr_n = issue_addr_r + 8'd1;
                         end
                     end else begin
-                        bf_cnt_n = bf_cnt_r + 6'd1;
+                        // Legacy controller behavior for the original pass
+                        // scheduler. Non-CWM operations still advance through
+                        // the existing block/butterfly machinery.
+                        if ((op_r == PE_MODE_COMP) ||
+                        (op_r == PE_MODE_DECOMP) ||
+                            (op_r == PE_MODE_ADDSUB)) begin
+                            issue_addr_n = issue_addr_r + 8'd1;
+                        end
+
+                        if (bf_last) begin
+                            bf_cnt_n = ZERO6;
+
+                            if (block_last) begin
+                                block_cnt_n = ZERO6;
+                                drain_cnt_n = pipe_lat;
+                                state_n     = S_DRAIN;
+                            end else begin
+                                block_cnt_n = block_cnt_r + 6'd1;
+                            end
+                        end else begin
+                            bf_cnt_n = bf_cnt_r + 6'd1;
+                        end
                     end
                 end
             end
 
             S_DRAIN: begin
-                if (!drain_done)
-                    drain_cnt_n = drain_cnt_r - 4'd1;
-                else
-                    state_n = S_NEXT_PASS;
+                if (op_r == PE_MODE_CWM) begin
+                    if (cmi_ready_i && mac_drain_accept_i) begin
+                        if (cwm_drain_idx_r == CWM_PAIR_LAST) begin
+                            state_n = S_DONE;
+                        end else begin
+                            cwm_drain_idx_n = cwm_drain_idx_r + 7'd1;
+                        end
+                    end
+                end else begin
+                    if (!drain_done)
+                        drain_cnt_n = drain_cnt_r - 4'd1;
+                    else
+                        state_n = S_NEXT_PASS;
+                end
             end
 
             S_NEXT_PASS: begin
@@ -535,6 +606,7 @@ module pau_controller (
             block_cnt_r  <= ZERO6;
             bf_cnt_r     <= ZERO6;
             drain_cnt_r  <= ZERO4;
+            cwm_drain_idx_r <= 7'd0;
             issue_addr_r <= ZERO8;
 
             pe_ctrl_d1_r  <= PE_MODE_NTT;
@@ -545,6 +617,7 @@ module pau_controller (
             block_cnt_r  <= block_cnt_n;
             bf_cnt_r     <= bf_cnt_n;
             drain_cnt_r  <= drain_cnt_n;
+            cwm_drain_idx_r <= cwm_drain_idx_n;
             issue_addr_r <= issue_addr_n;
 
             // Latch job parameters once at job start
@@ -555,6 +628,7 @@ module pau_controller (
                 block_cnt_r  <= ZERO6;
                 bf_cnt_r     <= ZERO6;
                 drain_cnt_r  <= ZERO4;
+                cwm_drain_idx_r <= 7'd0;
                 issue_addr_r <= ZERO8;
             end
 
@@ -576,24 +650,55 @@ module pau_controller (
     assign tf_start_o         = (state_r == S_SETUP) && pass_uses_tf;
     assign pass_idx_o         = pass_idx_r;
 
-    assign cmi_poly_id_o      = poly_id_r;
-    assign cmi_v_o            = (state_r == S_RUN);
-    assign cmi_rd_en_o        = issue_fire;
-    assign cmi_coeff_idx_o[0] = idx0;
-    assign cmi_coeff_idx_o[1] = idx1;
+    assign cmi_poly_id_o = poly_id_r;
+
+    // CWM drain needs to keep reading e_hat pairs while the row accumulator
+    // emits final t_hat writeback pairs. For all other ops, CMI is active
+    // only during the original S_RUN read issue phase.
+    assign cmi_v_o     = (state_r == S_RUN) ||
+                         ((state_r == S_DRAIN) && (op_r == PE_MODE_CWM));
+    assign cmi_rd_en_o = issue_fire || cwm_drain_issue;
+
+    // In CWM drain we read just the e_hat pair that will be fused with the
+    // scratch accumulator output. The writeback side reuses the same indices,
+    // allowing e_hat to be overwritten in place by the final t_hat row.
+    assign cmi_coeff_idx_o[0] =
+        ((state_r == S_DRAIN) && (op_r == PE_MODE_CWM)) ? {cwm_drain_idx_r, 1'b0} : idx0;
+    assign cmi_coeff_idx_o[1] =
+        ((state_r == S_DRAIN) && (op_r == PE_MODE_CWM)) ? ({cwm_drain_idx_r, 1'b0} + 8'd1) : idx1;
     assign cmi_coeff_idx_o[2] = idx2;
     assign cmi_coeff_idx_o[3] = idx3;
 
-    // All 4 lanes are real coefficients in the schedules below.
-    // If your AU expects only specific lanes active in radix-2 mode,
-    // change this for pass_is_radix2.
-    assign cmi_coeff_valid_o  = (state_r == S_RUN) ? 4'b1111 : 4'b0000;
+    // CWM is called out explicitly because the true dual-source CWM fetch path
+    // is still a follow-on task. During accumulation we only mark the first
+    // two logical lanes as valid for the row-MAC flow introduced in this
+    // branch. NTT/INTT/AddSub/Comp/Decomp retain the original 4-lane behavior.
+    assign cmi_coeff_valid_o =
+        ((state_r == S_DRAIN) && (op_r == PE_MODE_CWM)) ? 4'b0011 :
+        ((state_r == S_RUN)   && (op_r == PE_MODE_CWM)) ? 4'b0011 :
+        (state_r == S_RUN)                                ? 4'b1111 :
+                                                            4'b0000;
+
+    // CWM writeback latency is now state-dependent:
+    //   RUN   : no PE writeback is expected yet, so the value is unused.
+    //   DRAIN : read e_hat (1cc) -> fuse/output register in mac_row_accum (1cc)
+    //           -> writeback, therefore 2cc from read issue to wr_en.
     assign cmi_wb_latency_o   = ((op_r == PE_MODE_NTT) || (op_r == PE_MODE_INTT)) ?
                                  (pass_is_radix2 ? 4'd5 : 4'd9) :
+                                 ((op_r == PE_MODE_CWM) && (state_r == S_DRAIN)) ? 4'd2 :
                                  (op_r == PE_MODE_CWM)    ? 4'd9 :
                                  (op_r == PE_MODE_COMP)   ? 4'd4 :
                                  (op_r == PE_MODE_DECOMP) ? 4'd4 :
                                  (op_r == PE_MODE_ADDSUB) ? 4'd2 : 4'd2;
+
+    // Expose the row-accumulator control plane so pau_top can delay/align it
+    // to the real CWM datapath latency.
+    assign mac_issue_o       = (op_r == PE_MODE_CWM) && issue_fire;
+    assign mac_first_term_o  = (issue_addr_r == ZERO8);
+    assign mac_pair_idx_o    = issue_addr_r[6:0];
+    assign mac_drain_issue_o = cwm_drain_issue;
+    assign mac_drain_idx_o   = cwm_drain_idx_r;
+    assign mac_fuse_e_o      = (op_r == PE_MODE_CWM) && (state_r == S_DRAIN);
 
     assign block_cnt_o        = block_cnt_r;
     assign bf_cnt_o           = bf_cnt_r;
