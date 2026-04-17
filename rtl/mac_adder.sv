@@ -1,6 +1,6 @@
 /*
  * Module Name: mac_adder
- * Author(s): Salwan Aldhahab, OpenAI Codex
+ * Author(s): Salwan Aldhahab, Quardin Lyttle
  * Target: FIPS 203 (ML-KEM / Kyber) Hardware Accelerator
  *
  * Reference:

@@ -1,6 +1,6 @@
 /*
  * Module Name: mac_pair_add
- * Author(s): OpenAI Codex (branch: quardins-attempted-updates)
+ * Author(s): Quardin Lyttle
  * Target: FIPS 203 (ML-KEM / Kyber) Hardware Accelerator
  *
  * Description:
