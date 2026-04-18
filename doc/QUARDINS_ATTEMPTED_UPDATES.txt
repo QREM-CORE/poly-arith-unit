@@ -244,6 +244,10 @@ Known limitations:
 5. Some older directed tests and top-level integration code in the repo still
    reflect earlier interface assumptions and may need follow-up cleanup.
 
+6. The maintained CMI contract now lives in the PAU repository.
+   The duplicate copy was removed from the Memory repository to avoid the
+   repos drifting apart and silently describing different PAU-memory timing.
+
 
 Design choices that were intentional
 ------------------------------------

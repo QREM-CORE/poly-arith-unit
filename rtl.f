@@ -11,6 +11,9 @@ rtl/mod_uni_add_sub.sv
 # --- Misc Modules ---
 rtl/delay_n.sv
 
+# --- PAU-owned conflict-free memory interface ---
+rtl/cmi.sv
+
 # --- MAC Adder ---
 rtl/mac_pair_add.sv
 rtl/mac_adder.sv
@@ -29,6 +32,10 @@ rtl/pe_unit.sv
 
 # --- PAU Controller ---
 rtl/pau_controller.sv
+
+# --- Local memory-side stubs/wrappers used by pau_top ---
+rtl/poly_ram_bank.sv
+rtl/poly_mem_wrapper_4bank.sv
 
 # --- Top Level ---
 rtl/pau_top.sv
