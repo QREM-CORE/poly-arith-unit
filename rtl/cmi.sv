@@ -9,7 +9,7 @@
  *
  * Description:
  *   Adapter between the PAU controller / AU writeback path and the
- *   polynomial memory wrapper.
+ *   Memory Subsystem PAU port.
  *
  *   This CMI belongs to the PAU. It is intentionally kept with the PAU RTL so
  *   the PAU team owns the request timing, writeback alignment, and interface
@@ -17,8 +17,8 @@
  *
  * Responsibilities:
  *   - Forward 4-lane read requests (coefficient indices + valid flags) to the
- *     memory wrapper, which handles CMI bank mapping internally
- *   - Consume the wrapper's 1-cycle read response and present aligned
+ *     memory subsystem, which handles CMI bank mapping internally
+ *   - Consume the subsystem's 1-cycle read response and present aligned
  *     coefficient data to the PE / arithmetic path
  *   - Align writeback indices via configurable delay pipelines so write
  *     addresses arrive at the memory wrapper at the same time as PAU result
@@ -28,14 +28,14 @@
  *
  * Notes:
  *   - Reset is active-high and synchronous.
- *   - Wrapper handles bank mapping + read-response reordering.
+ *   - Memory handles bank mapping + read-response ownership.
  *   - Writes are allowed even when no new read is being issued.
  */
 
 module cmi #(
     parameter int N          = 256,
     parameter int W          = 16,
-    parameter int NUM_POLYS  = 4,
+    parameter int NUM_POLYS  = 32,
     parameter int MAX_WB_LAT = 9
 )(
     input  logic clk,
@@ -72,36 +72,38 @@ module cmi #(
     output logic                         ready_o,
 
     // ------------------------------------------------------------
-    // To poly_mem_wrapper_4bank
+    // To Memory Subsystem PAU port
     // ------------------------------------------------------------
-    output logic [$clog2(NUM_POLYS)-1:0] mem_poly_id_o,
-    output logic                         mem_v_o,
-    output logic                         mem_rd_en_o,
-    output logic [3:0][$clog2(N)-1:0]    mem_rd_idx_o,
-    output logic [3:0]                   mem_rd_lane_valid_o,
-    output logic [3:0]                   mem_wr_en_o,
-    output logic [3:0][$clog2(N)-1:0]    mem_wr_idx_o,
-    output logic [3:0][W-1:0]            mem_wr_data_o,
+    output logic                         pau_req_o,
+    output logic                         pau_rd_en_o,
+    output logic [$clog2(NUM_POLYS)-1:0] pau_rd_poly_id_o,
+    output logic [3:0][$clog2(N)-1:0]    pau_rd_idx_o,
+    output logic [3:0]                   pau_rd_lane_valid_o,
+    output logic [3:0]                   pau_wr_en_o,
+    output logic [$clog2(NUM_POLYS)-1:0] pau_wr_poly_id_o,
+    output logic [3:0][$clog2(N)-1:0]    pau_wr_idx_o,
+    output logic [3:0][W-1:0]            pau_wr_data_o,
 
     // ------------------------------------------------------------
-    // From poly_mem_wrapper_4bank
+    // From Memory Subsystem PAU port
     // ------------------------------------------------------------
-    input  logic                         mem_rd_valid_i,
-    input  logic [$clog2(NUM_POLYS)-1:0] mem_rd_poly_id_i,
-    input  logic [3:0][$clog2(N)-1:0]    mem_rd_idx_i,
-    input  logic [3:0]                   mem_rd_lane_valid_i,
-    input  logic [3:0][W-1:0]            mem_rd_data_i,
-    input  logic                         mem_ready_i
+    input  logic                         pau_rd_valid_i,
+    input  logic [$clog2(NUM_POLYS)-1:0] pau_rd_poly_id_i,
+    input  logic [3:0][$clog2(N)-1:0]    pau_rd_idx_i,
+    input  logic [3:0]                   pau_rd_lane_valid_i,
+    input  logic [3:0][W-1:0]            pau_rd_data_i,
+    input  logic                         pau_stall_i
 );
 
     // ============================================================
     // READ REQUEST PATH
     // ============================================================
-    assign mem_poly_id_o       = poly_id_i;
-    assign mem_v_o             = v_i | (|wr_en_i);
-    assign mem_rd_en_o         = rd_en_i;
-    assign mem_rd_idx_o        = coeff_idx_i;
-    assign mem_rd_lane_valid_o = coeff_valid_i;
+    assign pau_req_o           = v_i | (|wr_en_i);
+    assign pau_rd_en_o         = rd_en_i;
+    assign pau_rd_poly_id_o    = poly_id_i;
+    assign pau_rd_idx_o        = coeff_idx_i;
+    assign pau_rd_lane_valid_o = coeff_valid_i;
+    assign pau_wr_poly_id_o    = poly_id_i;
 
     // ============================================================
     // READ RESPONSE PATH
@@ -109,10 +111,10 @@ module cmi #(
     always_comb begin
         coeff_o = '0;
 
-        if (mem_rd_valid_i) begin
+        if (pau_rd_valid_i) begin
             for (int i = 0; i < 4; i++) begin
-                if (mem_rd_lane_valid_i[i]) begin
-                    coeff_o[i] = mem_rd_data_i[i];
+                if (pau_rd_lane_valid_i[i]) begin
+                    coeff_o[i] = pau_rd_data_i[i];
                 end
             end
         end
@@ -173,13 +175,13 @@ module cmi #(
         endcase
     end
 
-    assign mem_wr_en_o   = wr_en_i & coeff_valid_sel;
-    assign mem_wr_idx_o  = wr_idx_sel;
-    assign mem_wr_data_o = wr_data_i;
+    assign pau_wr_en_o   = wr_en_i & coeff_valid_sel;
+    assign pau_wr_idx_o  = wr_idx_sel;
+    assign pau_wr_data_o = wr_data_i;
 
     // ============================================================
     // READY
     // ============================================================
-    assign ready_o = mem_ready_i;
+    assign ready_o = ~pau_stall_i;
 
 endmodule

@@ -22,21 +22,22 @@ module cmi_tb;
     logic [3:0][W-1:0]         coeff_o;
     logic                      ready_o;
 
-    logic [POLY_W-1:0]         mem_poly_id_o;
-    logic                      mem_v_o;
-    logic                      mem_rd_en_o;
-    logic [3:0][COEFF_W-1:0]   mem_rd_idx_o;
-    logic [3:0]                mem_rd_lane_valid_o;
-    logic [3:0]                mem_wr_en_o;
-    logic [3:0][COEFF_W-1:0]   mem_wr_idx_o;
-    logic [3:0][W-1:0]         mem_wr_data_o;
+    logic                      pau_req_o;
+    logic                      pau_rd_en_o;
+    logic [POLY_W-1:0]         pau_rd_poly_id_o;
+    logic [3:0][COEFF_W-1:0]   pau_rd_idx_o;
+    logic [3:0]                pau_rd_lane_valid_o;
+    logic [3:0]                pau_wr_en_o;
+    logic [POLY_W-1:0]         pau_wr_poly_id_o;
+    logic [3:0][COEFF_W-1:0]   pau_wr_idx_o;
+    logic [3:0][W-1:0]         pau_wr_data_o;
 
-    logic                      mem_rd_valid_i;
-    logic [POLY_W-1:0]         mem_rd_poly_id_i;
-    logic [3:0][COEFF_W-1:0]   mem_rd_idx_i;
-    logic [3:0]                mem_rd_lane_valid_i;
-    logic [3:0][W-1:0]         mem_rd_data_i;
-    logic                      mem_ready_i;
+    logic                      pau_rd_valid_i;
+    logic [POLY_W-1:0]         pau_rd_poly_id_i;
+    logic [3:0][COEFF_W-1:0]   pau_rd_idx_i;
+    logic [3:0]                pau_rd_lane_valid_i;
+    logic [3:0][W-1:0]         pau_rd_data_i;
+    logic                      pau_stall_i;
 
     cmi #(
         .N(N),
@@ -55,20 +56,21 @@ module cmi_tb;
         .wr_data_i(wr_data_i),
         .coeff_o(coeff_o),
         .ready_o(ready_o),
-        .mem_poly_id_o(mem_poly_id_o),
-        .mem_v_o(mem_v_o),
-        .mem_rd_en_o(mem_rd_en_o),
-        .mem_rd_idx_o(mem_rd_idx_o),
-        .mem_rd_lane_valid_o(mem_rd_lane_valid_o),
-        .mem_wr_en_o(mem_wr_en_o),
-        .mem_wr_idx_o(mem_wr_idx_o),
-        .mem_wr_data_o(mem_wr_data_o),
-        .mem_rd_valid_i(mem_rd_valid_i),
-        .mem_rd_poly_id_i(mem_rd_poly_id_i),
-        .mem_rd_idx_i(mem_rd_idx_i),
-        .mem_rd_lane_valid_i(mem_rd_lane_valid_i),
-        .mem_rd_data_i(mem_rd_data_i),
-        .mem_ready_i(mem_ready_i)
+        .pau_req_o(pau_req_o),
+        .pau_rd_en_o(pau_rd_en_o),
+        .pau_rd_poly_id_o(pau_rd_poly_id_o),
+        .pau_rd_idx_o(pau_rd_idx_o),
+        .pau_rd_lane_valid_o(pau_rd_lane_valid_o),
+        .pau_wr_en_o(pau_wr_en_o),
+        .pau_wr_poly_id_o(pau_wr_poly_id_o),
+        .pau_wr_idx_o(pau_wr_idx_o),
+        .pau_wr_data_o(pau_wr_data_o),
+        .pau_rd_valid_i(pau_rd_valid_i),
+        .pau_rd_poly_id_i(pau_rd_poly_id_i),
+        .pau_rd_idx_i(pau_rd_idx_i),
+        .pau_rd_lane_valid_i(pau_rd_lane_valid_i),
+        .pau_rd_data_i(pau_rd_data_i),
+        .pau_stall_i(pau_stall_i)
     );
 
     initial clk = 1'b0;
@@ -91,12 +93,12 @@ module cmi_tb;
             wb_latency_i        = 4'd2;
             wr_en_i             = '0;
             wr_data_i           = '0;
-            mem_rd_valid_i      = 1'b0;
-            mem_rd_poly_id_i    = '0;
-            mem_rd_idx_i        = '0;
-            mem_rd_lane_valid_i = '0;
-            mem_rd_data_i       = '0;
-            mem_ready_i         = 1'b1;
+            pau_rd_valid_i      = 1'b0;
+            pau_rd_poly_id_i    = '0;
+            pau_rd_idx_i        = '0;
+            pau_rd_lane_valid_i = '0;
+            pau_rd_data_i       = '0;
+            pau_stall_i         = 1'b0;
         end
     endtask
 
@@ -120,13 +122,13 @@ module cmi_tb;
         coeff_valid_i       = 4'b1111;
         #1;
 
-        if (mem_poly_id_o !== POLY_W'(2))
-            $fatal(1, "CMI did not forward poly_id correctly");
-        if (!mem_v_o || !mem_rd_en_o)
+        if (pau_rd_poly_id_o !== POLY_W'(2))
+            $fatal(1, "CMI did not forward read poly_id correctly");
+        if (!pau_req_o || !pau_rd_en_o)
             $fatal(1, "CMI did not forward read request correctly");
-        if (mem_rd_idx_o[0] !== COEFF_W'(8) || mem_rd_idx_o[3] !== COEFF_W'(11))
+        if (pau_rd_idx_o[0] !== COEFF_W'(8) || pau_rd_idx_o[3] !== COEFF_W'(11))
             $fatal(1, "CMI read indices mismatch");
-        if (mem_rd_lane_valid_o !== 4'b1111)
+        if (pau_rd_lane_valid_o !== 4'b1111)
             $fatal(1, "CMI read lane-valid mismatch");
 
         tick();
@@ -135,12 +137,12 @@ module cmi_tb;
         // ------------------------------------------------------
         // 2) Read response routing
         // ------------------------------------------------------
-        mem_rd_valid_i      = 1'b1;
-        mem_rd_lane_valid_i = 4'b1111;
-        mem_rd_data_i[0]    = 16'h1111;
-        mem_rd_data_i[1]    = 16'h2222;
-        mem_rd_data_i[2]    = 16'h3333;
-        mem_rd_data_i[3]    = 16'h4444;
+        pau_rd_valid_i      = 1'b1;
+        pau_rd_lane_valid_i = 4'b1111;
+        pau_rd_data_i[0]    = 16'h1111;
+        pau_rd_data_i[1]    = 16'h2222;
+        pau_rd_data_i[2]    = 16'h3333;
+        pau_rd_data_i[3]    = 16'h4444;
         #1;
         if (coeff_o[0] !== 16'h1111 || coeff_o[1] !== 16'h2222 ||
             coeff_o[2] !== 16'h3333 || coeff_o[3] !== 16'h4444)
@@ -151,11 +153,11 @@ module cmi_tb;
         // ------------------------------------------------------
         // 3) Ready mirrors downstream memory readiness
         // ------------------------------------------------------
-        mem_ready_i = 1'b0;
+        pau_stall_i = 1'b1;
         #1;
         if (ready_o !== 1'b0)
-            $fatal(1, "CMI ready_o should mirror mem_ready_i");
-        mem_ready_i = 1'b1;
+            $fatal(1, "CMI ready_o should reflect the PAU stall input");
+        pau_stall_i = 1'b0;
         #1;
         if (ready_o !== 1'b1)
             $fatal(1, "CMI ready_o failed to return high");
@@ -168,8 +170,10 @@ module cmi_tb;
         wr_data_i[0]     = 16'hAAAA;
         wr_data_i[1]     = 16'hBBBB;
         #1;
-        if (!mem_v_o)
-            $fatal(1, "CMI must assert mem_v_o for write-only cycles");
+        if (!pau_req_o)
+            $fatal(1, "CMI must assert pau_req_o for write-only cycles");
+        if (pau_wr_poly_id_o !== '0)
+            $fatal(1, "CMI write poly_id should default from the input poly_id");
 
         // ------------------------------------------------------
         // 5) Writeback alignment for latency=2
@@ -190,11 +194,11 @@ module cmi_tb;
         wr_data_i[1]     = 16'hBEEF;
         wb_latency_i     = 4'd2;
         #1;
-        if (mem_wr_en_o !== 4'b0011)
+        if (pau_wr_en_o !== 4'b0011)
             $fatal(1, "CMI latency-2 write enable mismatch");
-        if (mem_wr_idx_o[0] !== COEFF_W'(20) || mem_wr_idx_o[1] !== COEFF_W'(21))
+        if (pau_wr_idx_o[0] !== COEFF_W'(20) || pau_wr_idx_o[1] !== COEFF_W'(21))
             $fatal(1, "CMI latency-2 write index mismatch");
-        if (mem_wr_data_o[0] !== 16'hCAFE || mem_wr_data_o[1] !== 16'hBEEF)
+        if (pau_wr_data_o[0] !== 16'hCAFE || pau_wr_data_o[1] !== 16'hBEEF)
             $fatal(1, "CMI latency-2 write data mismatch");
         tick();
         clear_inputs();
@@ -217,11 +221,11 @@ module cmi_tb;
         wr_data_i[3]     = 16'h5678;
         wb_latency_i     = 4'd4;
         #1;
-        if (mem_wr_en_o !== 4'b1100)
+        if (pau_wr_en_o !== 4'b1100)
             $fatal(1, "CMI latency-4 write enable mismatch");
-        if (mem_wr_idx_o[2] !== COEFF_W'(42) || mem_wr_idx_o[3] !== COEFF_W'(43))
+        if (pau_wr_idx_o[2] !== COEFF_W'(42) || pau_wr_idx_o[3] !== COEFF_W'(43))
             $fatal(1, "CMI latency-4 write index mismatch");
-        if (mem_wr_data_o[2] !== 16'h1234 || mem_wr_data_o[3] !== 16'h5678)
+        if (pau_wr_data_o[2] !== 16'h1234 || pau_wr_data_o[3] !== 16'h5678)
             $fatal(1, "CMI latency-4 write data mismatch");
 
         $display("TB PASS");

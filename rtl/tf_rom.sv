@@ -72,6 +72,9 @@ module tf_rom (
     output  coeff_t         w3_o            // PE3 Radix-4 root (omega_4)
 );
 
+    typedef logic [35:0] r4_rom_t [0:20];
+    typedef logic [11:0] r2_rom_t [0:63];
+
     // =========================================================================
     // ROM Storage: R4NTT_ROM (21 x 36-bit)
     // =========================================================================
@@ -81,7 +84,7 @@ module tf_rom (
     //   Pass 2 (p=2, stages 3&4):  4 entries  [1..4]
     //   Pass 3 (p=1, stages 5&6): 16 entries  [5..20]
 
-    localparam logic [35:0] R4NTT_ROM [21] = '{
+    localparam r4_rom_t R4NTT_ROM = '{
         {12'd17,   12'd289,  12'd1584},  // [ 0] Pass 1
         {12'd296,  12'd1062, 12'd1409},  // [ 1] Pass 2
         {12'd1703, 12'd650,  12'd1063},  // [ 2]
@@ -111,7 +114,7 @@ module tf_rom (
     // Standard forward twiddle factors for NTT Radix-2 pass (stage 7).
     // Addressed by j/4 (Alg 5, line 16).
 
-    localparam logic [11:0] OMEGA_ROM [64] = '{
+    localparam r2_rom_t OMEGA_ROM = '{
         12'd1729, 12'd2761, 12'd331,  12'd2298, 12'd2447, 12'd1651, 12'd1435, 12'd1092,
         12'd1919, 12'd2662, 12'd1977, 12'd319,  12'd2094, 12'd2308, 12'd2617, 12'd1212,
         12'd630,  12'd723,  12'd2304, 12'd2549, 12'd56,   12'd952,  12'd2868, 12'd2150,
@@ -131,7 +134,7 @@ module tf_rom (
     //   Pass 3 (p=2, stages 4&5):  4 entries  [16..19]
     //   Pass 4 (p=3, stages 6&7):  1 entry    [20]
 
-    localparam logic [35:0] R4INTT_ROM [21] = '{
+    localparam r4_rom_t R4INTT_ROM = '{
         {12'd2761, 12'd2649, 12'd331 },  // [ 0] Pass 2
         {12'd2298, 12'd1756, 12'd2447},  // [ 1]
         {12'd1651, 12'd3220, 12'd1435},  // [ 2]
@@ -162,7 +165,7 @@ module tf_rom (
     // Content: Q - zeta^-1 for each twiddle factor.
     // Addressed by j/4 (Alg 6, line 2).
 
-    localparam logic [11:0] OMEGA_INV_ROM [64] = '{
+    localparam r2_rom_t OMEGA_INV_ROM = '{
         12'd17,   12'd289,  12'd1584, 12'd296,  12'd1703, 12'd2319, 12'd2804, 12'd1062,
         12'd1409, 12'd650,  12'd1063, 12'd1426, 12'd939,  12'd2647, 12'd1722, 12'd2642,
         12'd1637, 12'd1197, 12'd375,  12'd3046, 12'd1847, 12'd1438, 12'd1143, 12'd2786,

@@ -26,14 +26,16 @@
 
 import poly_arith_pkg::*;
 
-module pau_controller (
+module pau_controller #(
+    parameter int NUM_POLYS = 32
+)(
     input  logic             clk,
     input  logic             rst,
 
     // ---- Job control ----
     input  logic             start_i,
     input  pe_mode_e         op_type_i,
-    input  logic [1:0]       poly_id_i,
+    input  logic [$clog2(NUM_POLYS)-1:0] poly_id_i,
 
     output logic             ready_o,
     output logic             done_o,
@@ -62,7 +64,7 @@ module pau_controller (
     input  logic             cmi_ready_i,
     output logic             cmi_v_o,
     output logic             cmi_rd_en_o,
-    output logic [1:0]       cmi_poly_id_o,
+    output logic [$clog2(NUM_POLYS)-1:0] cmi_poly_id_o,
     output logic [3:0][7:0]  cmi_coeff_idx_o,
     output logic [3:0]       cmi_coeff_valid_o,
     output logic [3:0]       cmi_wb_latency_o,
@@ -112,6 +114,7 @@ module pau_controller (
     localparam logic [7:0] IDX_OFF_3            = 8'd3;
 
     // Zero constants
+    localparam int POLY_W                       = $clog2(NUM_POLYS);
     localparam logic [5:0] ZERO6                = 6'd0;
     localparam logic [7:0] ZERO8                = 8'd0;
     localparam logic [3:0] ZERO4                = 4'd0;
@@ -135,7 +138,7 @@ module pau_controller (
     // Latched operation + current pass
     // =========================================================================
     pe_mode_e   op_r;
-    logic [1:0] poly_id_r;
+    logic [POLY_W-1:0] poly_id_r;
     logic [1:0] pass_idx_r, pass_idx_n;
 
     // =========================================================================

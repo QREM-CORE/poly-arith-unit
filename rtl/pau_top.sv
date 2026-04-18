@@ -22,39 +22,39 @@
  *     a dedicated drain phase.
  *   - The true dual-source CWM memory interface is still a follow-on task.
  *     This branch focuses on the MAC/scratchpad side of the architecture.
- *   - PE op_a inputs now come from coeff_from_cmi rather than raw mem_rd_data.
+ *   - PE op_a inputs now come from coeff_from_cmi rather than raw memory data.
+ *   - The top-level memory boundary now matches the Memory Subsystem PAU port
+ *     instead of instantiating an older local wrapper contract directly.
  */
 
 import poly_arith_pkg::*;
 
-module pau_top (
+module pau_top #(
+    parameter int NUM_POLYS = 32
+)(
     input  logic       clk,
     input  logic       rst,
 
     // ---- Control Interface (From Main System) ----
     input  logic       start_i,
-    input  pe_mode_e   op_type_i
+    input  pe_mode_e   op_type_i,
 
-    // output logic            ready_o,
-    // output logic            done_o,
-
-    // // ---- Memory Interface (To SRAM / CMI) ----
-    // output logic            mem_wr_read_en_o,
-    // output logic            mem_wr_write_en_o,
-    // output logic [7:0]      rAddr_o,
-    // output logic [7:0]      wAddr_o,
-
-    // // Input Data Bus (From SRAM)
-    // input  coeff_t          a0_i, b0_i,
-    // input  coeff_t          a1_i, b1_i, c0_i, c1_i,
-    // input  coeff_t          a2_i, b2_i,
-    // input  coeff_t          a3_i, b3_i, w3_i,
-
-    // // Output Data Bus (To SRAM)
-    // output coeff_t          u0_o, v0_o,
-    // output coeff_t          u1_o, v1_o,
-    // output coeff_t          u2_o, v2_o, m_o,
-    // output coeff_t          u3_o, v3_o
+    // ---- Memory Subsystem PAU Port ----
+    output logic       pau_req_o,
+    output logic       pau_rd_en_o,
+    output logic [$clog2(NUM_POLYS)-1:0] pau_rd_poly_id_o,
+    output logic [3:0][7:0] pau_rd_idx_o,
+    output logic [3:0]      pau_rd_lane_valid_o,
+    output logic [3:0]      pau_wr_en_o,
+    output logic [$clog2(NUM_POLYS)-1:0] pau_wr_poly_id_o,
+    output logic [3:0][7:0] pau_wr_idx_o,
+    output logic [3:0][15:0] pau_wr_data_o,
+    input  logic       pau_rd_valid_i,
+    input  logic [$clog2(NUM_POLYS)-1:0] pau_rd_poly_id_i,
+    input  logic [3:0][7:0] pau_rd_idx_i,
+    input  logic [3:0]      pau_rd_lane_valid_i,
+    input  logic [3:0][15:0] pau_rd_data_i,
+    input  logic       pau_stall_i
 );
 
     // ==========================================
@@ -62,7 +62,8 @@ module pau_top (
     // ==========================================
 
     // If poly select is not exposed yet, default to poly 0.
-    localparam logic [1:0] DEFAULT_POLY_ID = 2'd0;
+    localparam int POLY_W = $clog2(NUM_POLYS);
+    localparam logic [POLY_W-1:0] DEFAULT_POLY_ID = '0;
 
     // Controller -> TF/PE side
     logic            ctl_ready;
@@ -82,29 +83,11 @@ module pau_top (
     // Controller -> CMI side
     logic            cmi_v;
     logic            cmi_rd_en;
-    logic [1:0]      cmi_poly_id;
+    logic [POLY_W-1:0] cmi_poly_id;
     logic [3:0][7:0] cmi_coeff_idx;
     logic [3:0]      cmi_coeff_v;
     logic [3:0]      cmi_wb_latency;
     logic            cmi_ready;
-
-    // CMI -> memory wrapper side
-    logic [1:0]                   mem_poly_id;
-    logic                         mem_v;
-    logic                         mem_rd_en;
-    logic [3:0][7:0]              mem_rd_idx;
-    logic [3:0]                   mem_rd_lane_valid;
-    logic [3:0]                   mem_wr_en;
-    logic [3:0][7:0]              mem_wr_idx;
-    logic [3:0][15:0]             mem_wr_data;
-    logic                         mem_ready;
-
-    // Memory wrapper -> CMI side
-    logic                         mem_rd_valid;
-    logic [1:0]                   mem_rd_poly_id;
-    logic [3:0][7:0]              mem_rd_idx_rsp;
-    logic [3:0]                   mem_rd_lane_valid_rsp;
-    logic [3:0][15:0]             mem_rd_data;
 
     // CMI -> PE side
     logic [3:0][15:0]             coeff_from_cmi;
@@ -204,7 +187,9 @@ module pau_top (
     // ==========================================
 
     // ---- Controller ----
-    pau_controller u_controller (
+    pau_controller #(
+        .NUM_POLYS(NUM_POLYS)
+    ) u_controller (
         .clk                (clk),
         .rst                (rst),
         .start_i            (start_i),
@@ -236,7 +221,9 @@ module pau_top (
 
     // ---- CMI ----
     // NEED TO ADD POLY BANK B FOR ADD/SUB
-    cmi u_cmi (
+    cmi #(
+        .NUM_POLYS(NUM_POLYS)
+    ) u_cmi (
         .clk                    (clk),
         .rst                    (rst),
         .coeff_idx_i            (cmi_coeff_idx),
@@ -249,40 +236,21 @@ module pau_top (
         .wr_data_i              (pe_wb_data),
         .coeff_o                (coeff_from_cmi),
         .ready_o                (cmi_ready),
-        .mem_poly_id_o          (mem_poly_id),
-        .mem_v_o                (mem_v),
-        .mem_rd_en_o            (mem_rd_en),
-        .mem_rd_idx_o           (mem_rd_idx),
-        .mem_rd_lane_valid_o    (mem_rd_lane_valid),
-        .mem_wr_en_o            (mem_wr_en),
-        .mem_wr_idx_o           (mem_wr_idx),
-        .mem_wr_data_o          (mem_wr_data),
-        .mem_rd_valid_i         (mem_rd_valid),
-        .mem_rd_poly_id_i       (mem_rd_poly_id),
-        .mem_rd_idx_i           (mem_rd_idx_rsp),
-        .mem_rd_lane_valid_i    (mem_rd_lane_valid_rsp),
-        .mem_rd_data_i          (mem_rd_data),
-        .mem_ready_i            (mem_ready)
-    );
-
-    // ---- 4-bank polynomial memory wrapper ----
-    poly_mem_wrapper_4bank u_poly_mem_wrapper (
-        .clk                (clk),
-        .rst_n              (rst),
-        .poly_id_i          (mem_poly_id),
-        .v_i                (mem_v),
-        .rd_en_i            (mem_rd_en),
-        .ready_o            (mem_ready),
-        .rd_idx_i           (mem_rd_idx),
-        .rd_lane_valid_i    (mem_rd_lane_valid),
-        .rd_valid_o         (mem_rd_valid),
-        .rd_poly_id_o       (mem_rd_poly_id),
-        .rd_idx_o           (mem_rd_idx_rsp),
-        .rd_lane_valid_o    (mem_rd_lane_valid_rsp),
-        .rd_data_o          (mem_rd_data),
-        .wr_en_i            (mem_wr_en),
-        .wr_idx_i           (mem_wr_idx),
-        .wr_data_i          (mem_wr_data)
+        .pau_req_o              (pau_req_o),
+        .pau_rd_en_o            (pau_rd_en_o),
+        .pau_rd_poly_id_o       (pau_rd_poly_id_o),
+        .pau_rd_idx_o           (pau_rd_idx_o),
+        .pau_rd_lane_valid_o    (pau_rd_lane_valid_o),
+        .pau_wr_en_o            (pau_wr_en_o),
+        .pau_wr_poly_id_o       (pau_wr_poly_id_o),
+        .pau_wr_idx_o           (pau_wr_idx_o),
+        .pau_wr_data_o          (pau_wr_data_o),
+        .pau_rd_valid_i         (pau_rd_valid_i),
+        .pau_rd_poly_id_i       (pau_rd_poly_id_i),
+        .pau_rd_idx_i           (pau_rd_idx_i),
+        .pau_rd_lane_valid_i    (pau_rd_lane_valid_i),
+        .pau_rd_data_i          (pau_rd_data_i),
+        .pau_stall_i            (pau_stall_i)
     );
 
     // ---- Twiddle Factor Address Generator ----
@@ -443,7 +411,10 @@ module pau_top (
         .pair_idx_i     (cwm_pair_idx_aligned),
         .cwm0_i         (cwm_z1_aligned),
         .cwm1_i         (z2_o),
-        .drain_req_i    (drain_issue_d1 && mem_rd_valid),
+        // The row accumulator should only drain once the e_hat pair being
+        // fused into the final t_hat writeback has actually returned from the
+        // memory subsystem on the PAU read-response channel.
+        .drain_req_i    (drain_issue_d1 && pau_rd_valid_i),
         .drain_idx_i    (drain_idx_d1),
         .fuse_e_i       (fuse_e_d1),
         .e0_i           (coeff_from_cmi[0][COEFF_WIDTH-1:0]),
