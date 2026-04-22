@@ -133,9 +133,10 @@ module tf_addr_gen (
             case (state_r)
                 S_PASS_1: begin
                     if (is_intt_r) begin
-                        // INTT Pass 1: R2, 64 blocks x 2 BFs
+                        // INTT Pass 1: R2, 64 groups x 1 issue cycle
+                        // PE0 and PE2 perform the two R2 butterflies in parallel.
                         blocks_max     = 6'd63;
-                        bfs_max        = 6'd1;
+                        bfs_max        = 6'd0;
                         pass_is_radix2 = 1'b1;
                     end else begin
                         // NTT Pass 1: R4, 1 block x 64 BFs
@@ -171,9 +172,10 @@ module tf_addr_gen (
                         blocks_max = 6'd0;
                         bfs_max    = 6'd63;
                     end else begin
-                        // NTT Pass 4: R2, 64 blocks x 2 BFs
+                        // NTT Pass 4: R2, 64 groups x 1 issue cycle
+                        // PE0 and PE2 perform the two R2 butterflies in parallel.
                         blocks_max     = 6'd63;
-                        bfs_max        = 6'd1;
+                        bfs_max        = 6'd0;
                         pass_is_radix2 = 1'b1;
                     end
                 end
