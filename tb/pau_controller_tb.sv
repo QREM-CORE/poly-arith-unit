@@ -1,82 +1,81 @@
-// ==========================================================
-// Testbench for Twiddle Factor ROM + Address Generator
-// Author: Jessica Buentipo
-// Description: Verifies that the tf_rom (4-ROM architecture)
-//              and tf_addr_gen (sequential counter) modules
-//              produce the correct twiddle factor values for
-//              all NTT and INTT passes.
-//
-//              The testbench checks:
-//              1. r4_addr / r2_addr sequences from tf_addr_gen
-//              2. ROM output values (w0, w1, w2, w3) from tf_rom
-//              3. Pass transitions and total cycle counts
-//              4. Pre-negated INTT values are correct
-// ==========================================================
-
 `timescale 1ns/1ps
 
 import poly_arith_pkg::*;
 
 module pau_controller_tb;
 
-    // -------------------------------------------------------------------------
-    // DUT signals
-    // -------------------------------------------------------------------------
+    localparam int NUM_POLYS = 32;
+    localparam int POLY_W    = $clog2(NUM_POLYS);
+
     logic       clk;
     logic       rst;
-
     logic       start_i;
     pe_mode_e   op_type_i;
+    logic [POLY_W-1:0] poly_id_i;
 
     logic       ready_o;
     logic       done_o;
-
     logic       tf_start_o;
     logic [1:0] pass_idx_o;
     pe_mode_e   pe_ctrl_o;
     logic       pe_valid_o;
 
-    logic       mem_read_en_o;
-    logic       mem_write_en_o;
-    logic [7:0] rAddr_o;
-    logic [7:0] wAddr_o;
+    logic       mac_issue_o;
+    logic       mac_first_term_o;
+    logic [6:0] mac_pair_idx_o;
+    logic       mac_drain_issue_o;
+    logic [6:0] mac_drain_idx_o;
+    logic       mac_fuse_e_o;
+    logic       mac_drain_accept_i;
+
+    logic       cmi_ready_i;
+    logic       cmi_v_o;
+    logic       cmi_rd_en_o;
+    logic [POLY_W-1:0] cmi_poly_id_o;
+    logic [3:0][7:0] cmi_coeff_idx_o;
+    logic [3:0]      cmi_coeff_valid_o;
+    logic [3:0]      cmi_wb_latency_o;
 
     logic [5:0] block_cnt_o;
     logic [5:0] bf_cnt_o;
 
-    // -------------------------------------------------------------------------
-    // DUT
-    // -------------------------------------------------------------------------
-    pau_controller dut (
-        .clk            (clk),
-        .rst            (rst),
-        .start_i        (start_i),
-        .op_type_i      (op_type_i),
-        .ready_o        (ready_o),
-        .done_o         (done_o),
-        .tf_start_o     (tf_start_o),
-        .pass_idx_o     (pass_idx_o),
-        .pe_ctrl_o      (pe_ctrl_o),
-        .pe_valid_o     (pe_valid_o),
-        .mem_read_en_o  (mem_read_en_o),
-        .mem_write_en_o (mem_write_en_o),
-        .rAddr_o        (rAddr_o),
-        .wAddr_o        (wAddr_o),
-        .block_cnt_o    (block_cnt_o),
-        .bf_cnt_o       (bf_cnt_o)
-    );
-
-    // -------------------------------------------------------------------------
-    // Clock
-    // -------------------------------------------------------------------------
-    initial clk = 0;
-    always #5 clk = ~clk;
-
-    // -------------------------------------------------------------------------
-    // Pass/Fail bookkeeping
-    // -------------------------------------------------------------------------
     integer pass_count = 0;
     integer fail_count = 0;
+
+    pau_controller #(
+        .NUM_POLYS(NUM_POLYS)
+    ) dut (
+        .clk(clk),
+        .rst(rst),
+        .start_i(start_i),
+        .op_type_i(op_type_i),
+        .poly_id_i(poly_id_i),
+        .ready_o(ready_o),
+        .done_o(done_o),
+        .tf_start_o(tf_start_o),
+        .pass_idx_o(pass_idx_o),
+        .pe_ctrl_o(pe_ctrl_o),
+        .pe_valid_o(pe_valid_o),
+        .mac_issue_o(mac_issue_o),
+        .mac_first_term_o(mac_first_term_o),
+        .mac_pair_idx_o(mac_pair_idx_o),
+        .mac_drain_issue_o(mac_drain_issue_o),
+        .mac_drain_idx_o(mac_drain_idx_o),
+        .mac_fuse_e_o(mac_fuse_e_o),
+        .mac_drain_accept_i(mac_drain_accept_i),
+        .cmi_ready_i(cmi_ready_i),
+        .cmi_v_o(cmi_v_o),
+        .cmi_rd_en_o(cmi_rd_en_o),
+        .cmi_poly_id_o(cmi_poly_id_o),
+        .cmi_coeff_idx_o(cmi_coeff_idx_o),
+        .cmi_coeff_valid_o(cmi_coeff_valid_o),
+        .cmi_wb_latency_o(cmi_wb_latency_o),
+        .block_cnt_o(block_cnt_o),
+        .bf_cnt_o(bf_cnt_o)
+    );
+
+    initial clk = 1'b0;
+    always #5 clk = ~clk;
 
     task automatic check(input logic cond, input string msg);
         begin
@@ -90,32 +89,18 @@ module pau_controller_tb;
         end
     endtask
 
-    task automatic summary;
-        begin
-            $display("--------------------------------------------------");
-            $display("TEST SUMMARY: PASS=%0d  FAIL=%0d", pass_count, fail_count);
-            $display("--------------------------------------------------");
-            if (fail_count == 0)
-                $display("OVERALL RESULT: PASS");
-            else
-                $display("OVERALL RESULT: FAIL");
-        end
-    endtask
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-    // Removed drive_pe_idle as we emulate the controller based purely on timer
-
     task automatic reset_dut;
         begin
-            rst      = 1'b1;
-            start_i  = 1'b0;
-            op_type_i = PE_MODE_NTT;
-
+            rst                = 1'b1;
+            start_i            = 1'b0;
+            op_type_i          = PE_MODE_NTT;
+            poly_id_i          = POLY_W'(3);
+            cmi_ready_i        = 1'b1;
+            mac_drain_accept_i = 1'b1;
             repeat (3) @(posedge clk);
             rst = 1'b0;
             @(posedge clk);
+            #1;
         end
     endtask
 
@@ -140,167 +125,154 @@ module pau_controller_tb;
             check(done_o === 1'b1, {opname, " completed before timeout"});
             if (done_o === 1'b1)
                 $display("[%0t] INFO: %s finished in %0d cycles", $time, opname, cyc);
+            @(posedge clk);
+            #1;
+            check(ready_o === 1'b1, {opname, " returned to IDLE"});
         end
     endtask
 
-    // -------------------------------------------------------------------------
-    // Test 1: Reset / idle checks
-    // -------------------------------------------------------------------------
     task automatic test_reset_idle;
         begin
             $display("\n=== TEST 1: RESET / IDLE ===");
             reset_dut();
 
             check(ready_o === 1'b1, "ready_o is high in IDLE after reset");
-            check(done_o  === 1'b0, "done_o is low after reset");
+            check(done_o === 1'b0, "done_o is low after reset");
             check(pe_valid_o === 1'b0, "pe_valid_o is low in IDLE");
-            check(mem_read_en_o === 1'b0, "mem_read_en_o is low in IDLE");
-            check(mem_write_en_o === 1'b0, "mem_write_en_o is low in IDLE");
+            check(cmi_v_o === 1'b0, "cmi_v_o is low in IDLE");
+            check(cmi_rd_en_o === 1'b0, "cmi_rd_en_o is low in IDLE");
         end
     endtask
 
-    // -------------------------------------------------------------------------
-    // Test 2: NTT behavior
-    // -------------------------------------------------------------------------
     task automatic test_ntt;
-        integer tf_pulses;
-        integer prev_pass;
+        integer cycle_idx;
+        logic saw_issue;
+        logic saw_nonzero_idx;
         begin
-            $display("\n=== TEST 2: NTT ===");
+            $display("\n=== TEST 2: NTT PRIMARY CMI ISSUE ===");
             reset_dut();
 
-            tf_pulses = 0;
-            prev_pass = -1;
-
+            saw_issue = 1'b0;
+            saw_nonzero_idx = 1'b0;
             start_op(PE_MODE_NTT);
 
-            // setup cycle
-            @(posedge clk);
-            check(ready_o === 1'b0, "controller leaves IDLE after NTT start");
+            #1;
             check(tf_start_o === 1'b1, "tf_start_o pulses during NTT setup");
+            check(cmi_poly_id_o === POLY_W'(3), "poly_id is forwarded to CMI");
 
-            // wait for validity cycle
-            @(posedge clk);
-            check(pe_ctrl_o == PE_MODE_NTT, "pe_ctrl_o latched to NTT (delayed by 1 cycle)");
-
-            // monitor a little while
-            repeat (20) begin
+            for (cycle_idx = 0; cycle_idx < 32; cycle_idx++) begin
                 @(posedge clk);
-                if (tf_start_o) tf_pulses++;
-                if (pass_idx_o != prev_pass) begin
-                    $display("[%0t] INFO: NTT pass_idx_o = %0d", $time, pass_idx_o);
-                    prev_pass = pass_idx_o;
-                end
+                #1;
+                if (cmi_v_o && cmi_rd_en_o && cmi_coeff_valid_o == 4'b1111)
+                    saw_issue = 1'b1;
+                if (cmi_coeff_idx_o[0] != 8'd0)
+                    saw_nonzero_idx = 1'b1;
             end
 
-            check(mem_read_en_o === 1'b1, "mem_read_en_o asserted during NTT run");
-            check(rAddr_o > 0, "rAddr_o increments during NTT run");
-            check(pe_valid_o === 1'b1, "pe_valid_o asserted during NTT run (delayed)");
+            check(saw_issue, "NTT issues primary CMI reads");
+            check(saw_nonzero_idx, "NTT coefficient index stream advances");
+            check(pe_valid_o === 1'b1, "pe_valid_o follows accepted CMI reads");
 
             wait_done(5000, "NTT");
-            check(done_o === 1'b1, "done_o asserted for NTT");
-            @(posedge clk);
-            check(ready_o === 1'b1, "controller returns to IDLE after NTT");
         end
     endtask
 
-    // -------------------------------------------------------------------------
-    // Test 3: INTT behavior
-    // -------------------------------------------------------------------------
     task automatic test_intt;
         begin
-            $display("\n=== TEST 3: INTT ===");
+            $display("\n=== TEST 3: INTT PRIMARY CMI ISSUE ===");
             reset_dut();
-
             start_op(PE_MODE_INTT);
 
-            @(posedge clk); // setup
+            #1;
             check(tf_start_o === 1'b1, "tf_start_o pulses during INTT setup");
-            @(posedge clk); // validity
-            check(pe_ctrl_o == PE_MODE_INTT, "pe_ctrl_o latched to INTT (delayed by 1 cycle)");
+            @(posedge clk);
+            #1;
+            check(pe_ctrl_o == PE_MODE_INTT, "pe_ctrl_o latches INTT");
+            check(cmi_v_o && cmi_rd_en_o, "INTT issues primary CMI reads");
 
             wait_done(5000, "INTT");
-            check(done_o === 1'b1, "done_o asserted for INTT");
-            @(posedge clk);
-            check(ready_o === 1'b1, "controller returns to IDLE after INTT");
         end
     endtask
 
-    // -------------------------------------------------------------------------
-    // Test 4: ADDSUB single-pass mode
-    // -------------------------------------------------------------------------
-    task automatic test_addsub;
+    task automatic test_addsub_primary_only_marker;
         begin
-            $display("\n=== TEST 4: ADDSUB ===");
+            $display("\n=== TEST 4: ADDSUB PRIMARY-ONLY MARKER ===");
             reset_dut();
-
             start_op(PE_MODE_ADDSUB);
 
-            @(posedge clk); // setup
+            @(posedge clk);
+            #1;
             check(tf_start_o === 1'b0, "tf_start_o stays low for ADDSUB");
-            @(posedge clk); // validity
-            check(pe_ctrl_o == PE_MODE_ADDSUB, "pe_ctrl_o latched to ADDSUB");
+            @(posedge clk);
+            #1;
+            check(pe_ctrl_o == PE_MODE_ADDSUB, "pe_ctrl_o latches ADDSUB");
+            check(cmi_v_o && cmi_rd_en_o, "ADDSUB currently issues only primary reads");
+            check(cmi_coeff_valid_o === 4'b1111, "ADDSUB requests four primary lanes");
 
             wait_done(1000, "ADDSUB");
-            check(done_o === 1'b1, "done_o asserted for ADDSUB");
         end
     endtask
 
-    // -------------------------------------------------------------------------
-    // Test 5: CWM single-pass mode
-    // -------------------------------------------------------------------------
-    task automatic test_cwm;
+    task automatic test_cwm_marker;
+        integer cycle_idx;
+        logic saw_accum_issue;
+        logic saw_drain_issue;
+        logic saw_done;
         begin
-            $display("\n=== TEST 5: CWM ===");
+            $display("\n=== TEST 5: CWM PRIMARY-ONLY MARKER ===");
             reset_dut();
 
+            saw_accum_issue = 1'b0;
+            saw_drain_issue = 1'b0;
+            saw_done        = 1'b0;
             start_op(PE_MODE_CWM);
 
-            @(posedge clk); // setup
-            check(tf_start_o === 1'b1, "tf_start_o pulses for CWM");
-            @(posedge clk); // validity
-            check(pe_ctrl_o == PE_MODE_CWM, "pe_ctrl_o latched to CWM");
-
-            wait_done(1000, "CWM");
-            check(done_o === 1'b1, "done_o asserted for CWM");
-        end
-    endtask
-
-    // -------------------------------------------------------------------------
-    // Test 6: Basic writeback delay observation
-    // -------------------------------------------------------------------------
-    task automatic test_writeback_delay;
-        integer cycle_idx;
-        logic saw_write;
-        begin
-            $display("\n=== TEST 6: WRITEBACK DELAY ===");
-            reset_dut();
-
-            saw_write = 1'b0;
-            start_op(PE_MODE_NTT);
-
-            // move into RUN
-            @(posedge clk); // setup
-            @(posedge clk); // first run cycle
-
-            check(mem_read_en_o === 1'b1, "read enable asserted in RUN");
-
-            for (cycle_idx = 0; cycle_idx < 16; cycle_idx++) begin
+            for (cycle_idx = 0; cycle_idx < 400; cycle_idx++) begin
                 @(posedge clk);
-                if (mem_write_en_o) begin
-                    saw_write = 1'b1;
-                    $display("[%0t] INFO: write observed, rAddr_o=%0d wAddr_o=%0d",
-                             $time, rAddr_o, wAddr_o);
+                #1;
+                if (mac_issue_o && cmi_v_o && cmi_rd_en_o &&
+                    cmi_coeff_valid_o == 4'b0011)
+                    saw_accum_issue = 1'b1;
+                if (mac_drain_issue_o && mac_fuse_e_o && cmi_v_o &&
+                    cmi_rd_en_o && cmi_coeff_valid_o == 4'b0011)
+                    saw_drain_issue = 1'b1;
+                if (done_o) begin
+                    saw_done = 1'b1;
+                    cycle_idx = 400;
                 end
             end
 
-            check(saw_write, "write enable eventually asserts after pipeline delay");
+            check(saw_accum_issue, "CWM accumulation issues lane-0/1 primary reads");
+            check(saw_drain_issue, "CWM drain issues lane-0/1 primary reads");
+            check(saw_done, "CWM completed before timeout");
+            @(posedge clk);
+            #1;
+            check(ready_o === 1'b1, "CWM returned to IDLE");
         end
     endtask
 
-    // -------------------------------------------------------------------------
-    // Main
-    // -------------------------------------------------------------------------
+    task automatic test_backpressure_hold;
+        begin
+            $display("\n=== TEST 6: CMI BACKPRESSURE ===");
+            reset_dut();
+            start_op(PE_MODE_NTT);
+
+            @(posedge clk);
+            @(posedge clk);
+            #1;
+            cmi_ready_i = 1'b0;
+            repeat (3) @(posedge clk);
+            #1;
+            check(cmi_v_o === 1'b1, "controller keeps request visible while CMI is not ready");
+            check(cmi_rd_en_o === 1'b0, "controller does not fire reads while stalled");
+
+            cmi_ready_i = 1'b1;
+            @(posedge clk);
+            #1;
+            check(cmi_rd_en_o === 1'b1, "controller resumes reads after CMI ready");
+        end
+    endtask
+
     initial begin
         $display("==================================================");
         $display("Starting pau_controller testbench");
@@ -309,11 +281,17 @@ module pau_controller_tb;
         test_reset_idle();
         test_ntt();
         test_intt();
-        test_addsub();
-        test_cwm();
-        test_writeback_delay();
+        test_addsub_primary_only_marker();
+        test_cwm_marker();
+        test_backpressure_hold();
 
-        summary();
+        $display("--------------------------------------------------");
+        $display("TEST SUMMARY: PASS=%0d  FAIL=%0d", pass_count, fail_count);
+        $display("--------------------------------------------------");
+        if (fail_count != 0)
+            $fatal(1, "pau_controller_tb failed");
+
+        $display("TB PASS");
         $finish;
     end
 

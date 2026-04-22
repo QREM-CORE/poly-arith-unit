@@ -22,6 +22,13 @@
  * 4. On this branch, CWM additionally exposes a row-accumulator control plane
  *    so pau_top can trap the running MAC sum inside a local scratch polynomial
  *    before draining the final result back to memory.
+ *
+ * Interface alignment note:
+ *   The current controller still emits one CMI poly_id and one coefficient
+ *   vector. That is enough for NTT/INTT in-place traffic, but not enough to
+ *   describe every current Memory-supported PAU pattern. CWM and ADD/SUB need
+ *   explicit second-source and, for row finalize, split source/destination
+ *   ownership before they should be treated as Memory-interface complete.
  */
 
 import poly_arith_pkg::*;
@@ -455,6 +462,11 @@ module pau_controller #(
 
             // -------------------------------------------------------------
             // Streaming / 4-coeff-per-cycle modes
+            //
+            // TODO(PAU, correctness): ADD/SUB requires two memory operands:
+            // X[0..3] and Y[0..3]. This index stream currently names only the
+            // primary/source-X vector. The matching Y vector must be issued on
+            // the PAU auxiliary Memory descriptor and routed into PE op_b.
             // -------------------------------------------------------------
             PE_MODE_COMP,
             PE_MODE_DECOMP,
@@ -471,11 +483,15 @@ module pau_controller #(
             //
             // NOTE:
             // The current PAU top-level still lacks the richer dual-source
-            // memory interface needed to fetch A_ij and s_j independently in
-            // the same cycle. The controller therefore exposes the *correct*
-            // pair index schedule for the local scratch accumulator, while
-            // the simple read index pattern below remains a placeholder until
-            // the wider CWM memory path is finished.
+            // memory interface needed to fetch A_hat[i][j] and s_hat[j]
+            // independently in the same cycle. The controller therefore
+            // exposes the pair index schedule for the local scratch
+            // accumulator, while the simple read index pattern below remains
+            // a placeholder until the wider CWM memory path is finished.
+            //
+            // TODO(PAU, correctness): CWM accumulation should issue A_hat on
+            // one PAU Memory descriptor and s_hat on the other. The current
+            // lane-0/1 primary read does not prove the real KeyGen row flow.
             // -------------------------------------------------------------
             PE_MODE_CWM: begin
                 base_idx = {issue_addr_r[6:0], 1'b0}; // pair_idx * 2
@@ -653,6 +669,10 @@ module pau_controller #(
     assign tf_start_o         = (state_r == S_SETUP) && pass_uses_tf;
     assign pass_idx_o         = pass_idx_r;
 
+    // NOTE(PAU/Mem): A single poly_id is still used for both primary reads and
+    // writeback. That is compatible with NTT/INTT in-place transforms. CWM
+    // row-finalize needs to read EI/e_hat and write T0..T3/t_hat, and ADD/SUB
+    // needs a second source poly_id, so future CMI work must split this.
     assign cmi_poly_id_o = poly_id_r;
 
     // CWM drain needs to keep reading e_hat pairs while the row accumulator
@@ -663,8 +683,11 @@ module pau_controller #(
     assign cmi_rd_en_o = issue_fire || cwm_drain_issue;
 
     // In CWM drain we read just the e_hat pair that will be fused with the
-    // scratch accumulator output. The writeback side reuses the same indices,
-    // allowing e_hat to be overwritten in place by the final t_hat row.
+    // scratch accumulator output.
+    //
+    // TODO(PAU, correctness): Memory's fixed map keeps EI/e_hat separate from
+    // final T/t_hat slots. The writeback side must not rely on "overwrite
+    // e_hat in place" semantics for final row commit.
     assign cmi_coeff_idx_o[0] =
         ((state_r == S_DRAIN) && (op_r == PE_MODE_CWM)) ? {cwm_drain_idx_r, 1'b0} : idx0;
     assign cmi_coeff_idx_o[1] =

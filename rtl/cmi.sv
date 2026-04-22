@@ -26,10 +26,19 @@
  *   - Allow write-only cycles (no concurrent read) for drain/final writeback
  *     phases
  *
+ * Current Memory alignment:
+ *   - This module drives the PAU primary descriptor only.
+ *   - The current Memory subsystem also exposes a PAU auxiliary descriptor so
+ *     PAU can own both memory ports for legal read/read, read/write, and
+ *     write/write phases.
+ *   - Do not mistake this primary-only CMI for the full Memory contract.
+ *
  * Notes:
  *   - Reset is active-high and synchronous.
  *   - Memory handles bank mapping + read-response ownership.
  *   - Writes are allowed even when no new read is being issued.
+ *   - TODO(PAU): add explicit auxiliary read/write descriptor shaping before
+ *     relying on CWM A_hat+s_hat fetches or ADD/SUB X+Y operand fetches.
  */
 
 module cmi #(
@@ -72,7 +81,11 @@ module cmi #(
     output logic                         ready_o,
 
     // ------------------------------------------------------------
-    // To Memory Subsystem PAU port
+    // To Memory Subsystem PAU primary port
+    //
+    // NOTE(PAU/Mem): Memory's auxiliary PAU port is intentionally not modeled
+    // here yet. pau_top ties aux idle so current NTT/INTT primary traffic
+    // stays compatible while making the missing dual-source path visible.
     // ------------------------------------------------------------
     output logic                         pau_req_o,
     output logic                         pau_rd_en_o,

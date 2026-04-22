@@ -20,11 +20,13 @@
  *   - Writeback is enabled for NTT / INTT / ADDSUB / COMP / DECOMP as before.
  *   - CWM now accumulates locally through mac_row_accum and writes back during
  *     a dedicated drain phase.
- *   - The true dual-source CWM memory interface is still a follow-on task.
- *     This branch focuses on the MAC/scratchpad side of the architecture.
+ *   - The true dual-source CWM / ADD / SUB memory interface is still a
+ *     follow-on task. This branch focuses on the MAC/scratchpad side of the
+ *     architecture and keeps the PAU auxiliary Memory descriptor tied idle.
  *   - PE op_a inputs now come from coeff_from_cmi rather than raw memory data.
- *   - The top-level memory boundary now matches the Memory Subsystem PAU port
- *     instead of instantiating an older local wrapper contract directly.
+ *   - The top-level memory boundary now exposes the current Memory Subsystem
+ *     PAU primary + auxiliary port set. Only the primary descriptor is driven
+ *     by current PAU RTL.
  */
 
 import poly_arith_pkg::*;
@@ -54,7 +56,23 @@ module pau_top #(
     input  logic [3:0][7:0] pau_rd_idx_i,
     input  logic [3:0]      pau_rd_lane_valid_i,
     input  logic [3:0][15:0] pau_rd_data_i,
-    input  logic       pau_stall_i
+    input  logic       pau_stall_i,
+
+    // ---- Memory Subsystem PAU Auxiliary Port ----
+    output logic       pau_aux_req_o,
+    output logic       pau_aux_rd_en_o,
+    output logic [$clog2(NUM_POLYS)-1:0] pau_aux_rd_poly_id_o,
+    output logic [3:0][7:0] pau_aux_rd_idx_o,
+    output logic [3:0]      pau_aux_rd_lane_valid_o,
+    output logic [3:0]      pau_aux_wr_en_o,
+    output logic [$clog2(NUM_POLYS)-1:0] pau_aux_wr_poly_id_o,
+    output logic [3:0][7:0] pau_aux_wr_idx_o,
+    output logic [3:0][15:0] pau_aux_wr_data_o,
+    input  logic       pau_aux_rd_valid_i,
+    input  logic [$clog2(NUM_POLYS)-1:0] pau_aux_rd_poly_id_i,
+    input  logic [3:0][7:0] pau_aux_rd_idx_i,
+    input  logic [3:0]      pau_aux_rd_lane_valid_i,
+    input  logic [3:0][15:0] pau_aux_rd_data_i
 );
 
     // ==========================================
@@ -64,6 +82,32 @@ module pau_top #(
     // If poly select is not exposed yet, default to poly 0.
     localparam int POLY_W = $clog2(NUM_POLYS);
     localparam logic [POLY_W-1:0] DEFAULT_POLY_ID = '0;
+
+    // NOTE(PAU/Mem): Current Memory exposes a PAU auxiliary descriptor so PAU
+    // can own both internal memory ports for legal read/read, read/write, or
+    // write/write phases. This top-level intentionally drives aux idle until
+    // the PAU controller/CMI grow explicit second-source and split-destination
+    // descriptors.
+    //
+    // Safe today:
+    //   - NTT/INTT-style primary in-place read/write traffic.
+    //
+    // Not proven by this primary-only path:
+    //   - CWM dual-read of A_hat[i][j] and s_hat[j].
+    //   - ADD/SUB dual-source reads for X and Y operands.
+    //   - CWM row finalize that reads EI/e_hat and writes final T/t_hat.
+    //
+    // TODO(PAU): drive these aux ports from a real dual-source CMI path before
+    // treating CWM, ADD, or SUB as Memory-interface complete.
+    assign pau_aux_req_o           = 1'b0;
+    assign pau_aux_rd_en_o         = 1'b0;
+    assign pau_aux_rd_poly_id_o    = '0;
+    assign pau_aux_rd_idx_o        = '0;
+    assign pau_aux_rd_lane_valid_o = '0;
+    assign pau_aux_wr_en_o         = '0;
+    assign pau_aux_wr_poly_id_o    = '0;
+    assign pau_aux_wr_idx_o        = '0;
+    assign pau_aux_wr_data_o       = '0;
 
     // Controller -> TF/PE side
     logic            ctl_ready;
@@ -220,7 +264,10 @@ module pau_top #(
     );
 
     // ---- CMI ----
-    // NEED TO ADD POLY BANK B FOR ADD/SUB
+    // NOTE(PAU/Mem): u_cmi currently drives only the Memory primary PAU
+    // descriptor. Memory can accept a PAU-owned auxiliary descriptor in the
+    // same cycle, but that path is deliberately tied idle above.
+    // TODO(PAU): add a second operand/source descriptor for ADD/SUB and CWM.
     cmi #(
         .NUM_POLYS(NUM_POLYS)
     ) u_cmi (
@@ -377,8 +424,12 @@ module pau_top #(
     );
 
     // ---- Processing Element (PE) Unit ----
-    // NEED TO ADD MUXING FOR ADD/SUB FOR OP_B
-    // CURRENTLY WIRED FOR NTT ONLY.
+    // NOTE(PAU): op_b is currently sourced from the twiddle/constant path.
+    // That is correct for NTT/INTT, but not for ADD/SUB. ADD/SUB requires a
+    // second memory-source vector Y[0..3], most naturally returned through the
+    // Memory auxiliary PAU read channel once CMI grows that path.
+    // TODO(PAU): route aux read data into op_b for ADD/SUB; do not assume the
+    // NTT twiddle pattern generalizes to pointwise arithmetic.
     pe_unit u_pe_unit (
         .clk                (clk),
         .rst                (rst),
@@ -414,6 +465,12 @@ module pau_top #(
         // The row accumulator should only drain once the e_hat pair being
         // fused into the final t_hat writeback has actually returned from the
         // memory subsystem on the PAU read-response channel.
+        //
+        // TODO(PAU, correctness): the present primary-only CMI uses one
+        // poly_id for both read and write. A real row-finalize phase must read
+        // EI/e_hat and write T0..T3/t_hat, so it needs either split read/write
+        // poly IDs or an aux-assisted request shape. Do not treat this drain
+        // plumbing as a complete Memory contract for KeyGen row commit.
         .drain_req_i    (drain_issue_d1 && pau_rd_valid_i),
         .drain_idx_i    (drain_idx_d1),
         .fuse_e_i       (fuse_e_d1),
