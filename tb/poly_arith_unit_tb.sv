@@ -4,7 +4,7 @@ import poly_arith_pkg::*;
 import qrem_mem_map_pkg::*;
 import qrem_seed_map_pkg::*;
 
-module pau_top_tb;
+module poly_arith_unit_tb;
 
     localparam int NUM_POLYS  = 32;
     localparam int CWM_NUM_TERMS = 3;
@@ -122,7 +122,7 @@ module pau_top_tb;
     int cwm_acc_fire_count;
     int check_fail_count;
 
-    pau_top #(
+    poly_arith_unit #(
         .NUM_POLYS(NUM_POLYS),
         .CWM_NUM_TERMS(CWM_NUM_TERMS)
     ) dut (

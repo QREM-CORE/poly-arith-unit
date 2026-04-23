@@ -37,4 +37,4 @@ rtl/pe_unit.sv
 rtl/pau_controller.sv
 
 # --- Top Level ---
-rtl/pau_top.sv
+rtl/poly_arith_unit.sv

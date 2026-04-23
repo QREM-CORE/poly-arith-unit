@@ -6,3 +6,5 @@ transcript
 *.txt
 build_*
 !doc/QUARDINS_ATTEMPTED_UPDATES.txt
+obj_dir/
+build.f

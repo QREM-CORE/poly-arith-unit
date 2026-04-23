@@ -10,7 +10,7 @@
  * doi: 10.1109/OJCAS.2025.3591136. (Inha University)
  *
  * Description:
- * The pau_controller is the central control unit of PAU. It orchestrates
+ * The pau_controller is the central control unit of poly_arith_unit. It orchestrates
  * data movement, computation scheduling, and pipeline synchronization across
  * the PEs, memory, and tf subsystem.
  *
@@ -20,7 +20,7 @@
  * 3. Supported modes include NTT, INTT, CWM, Compression/Decompression, Add/Sub.
  *    Operation type pe_ctrl_o is sent to pe_unit.
  * 4. On this branch, CWM additionally exposes a row-accumulator control plane
- *    so pau_top can trap the running MAC sum inside a local scratch polynomial
+ *    so poly_arith_unit can trap the running MAC sum inside a local scratch polynomial
  *    before draining the final result back to memory.
  *
  * Interface alignment note:
@@ -750,7 +750,7 @@ module pau_controller #(
     //           -> writeback, therefore 2cc from read issue to wr_en.
     assign cmi_wb_latency_o   = ((op_r == PE_MODE_CWM) && (state_r == S_DRAIN)) ? 4'd2 : wb_lat;
 
-    // Expose the row-accumulator control plane so pau_top can delay/align it
+    // Expose the row-accumulator control plane so poly_arith_unit can delay/align it
     // to the real CWM datapath latency.
     assign mac_issue_o       = (op_r == PE_MODE_CWM) && issue_fire;
     // Emit a 1-cycle pulse only on the very first accepted CWM issue beat.

@@ -1,5 +1,5 @@
 /*
- * Module Name: pau_top
+ * Module Name: poly_arith_unit
  * Author(s): Jessica Buentipo
  * Target: FIPS 203 (ML-KEM / Kyber) Hardware Accelerator
  *
@@ -10,7 +10,7 @@
  * doi: 10.1109/OJCAS.2025.3591136. (Inha University)
  *
  * Description:
- * Top module for the whole PAU system.
+ * Top module for the whole Poly Arithmetic Unit (PAU) system.
  *
  * This modified version adds PE -> local row accumulator -> CMI writeback
  * plumbing for the scratchpad-backed CWM update explored on the
@@ -32,7 +32,7 @@
 import poly_arith_pkg::*;
 import qrem_mem_map_pkg::*;
 
-module pau_top #(
+module poly_arith_unit #(
     parameter int NUM_POLYS = 32,
     // Default to the largest ML-KEM row length supported by the current
     // memory map. Higher-level integration should override this to the active

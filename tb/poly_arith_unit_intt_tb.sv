@@ -4,7 +4,7 @@ import poly_arith_pkg::*;
 import qrem_mem_map_pkg::*;
 import qrem_seed_map_pkg::*;
 
-module pau_top_intt_tb;
+module poly_arith_unit_intt_tb;
 
     localparam int NUM_POLYS  = 32;
     localparam int NCOEFF     = 256;
@@ -130,7 +130,7 @@ module pau_top_intt_tb;
     bit wb_seen_by_pass [0:3];
     int wb_gap_count_by_pass [0:3];
 
-    pau_top #(
+    poly_arith_unit #(
         .NUM_POLYS(NUM_POLYS)
     ) dut (
         .clk(clk),
