@@ -710,7 +710,7 @@ module pau_controller #(
     //   DRAIN : read e_hat (1cc) -> fuse/output register in mac_row_accum (1cc)
     //           -> writeback, therefore 2cc from read issue to wr_en.
     assign cmi_wb_latency_o   = ((op_r == PE_MODE_NTT) || (op_r == PE_MODE_INTT)) ?
-                                 (pass_is_radix2 ? 4'd5 : 4'd9) :
+                                 (pass_is_radix2 ? 4'd6 : 4'd10) :
                                  ((op_r == PE_MODE_CWM) && (state_r == S_DRAIN)) ? 4'd2 :
                                  (op_r == PE_MODE_CWM)    ? 4'd9 :
                                  (op_r == PE_MODE_COMP)   ? 4'd4 :

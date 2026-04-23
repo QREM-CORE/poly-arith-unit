@@ -45,7 +45,7 @@ module cmi #(
     parameter int N          = 256,
     parameter int W          = 16,
     parameter int NUM_POLYS  = 32,
-    parameter int MAX_WB_LAT = 9
+    parameter int MAX_WB_LAT = 10
 )(
     input  logic clk,
     input  logic rst,
@@ -182,8 +182,10 @@ module cmi #(
         unique case (wb_latency_i)
             4'd2: begin wr_idx_sel = wr_idx_pipe[2]; coeff_valid_sel = valid_pipe[2]; end
             4'd4: begin wr_idx_sel = wr_idx_pipe[4]; coeff_valid_sel = valid_pipe[4]; end
-            4'd5: begin wr_idx_sel = wr_idx_pipe[5]; coeff_valid_sel = valid_pipe[5]; end
-            4'd9: begin wr_idx_sel = wr_idx_pipe[9]; coeff_valid_sel = valid_pipe[9]; end
+            4'd5:  begin wr_idx_sel = wr_idx_pipe[5];  coeff_valid_sel = valid_pipe[5];  end
+            4'd6:  begin wr_idx_sel = wr_idx_pipe[6];  coeff_valid_sel = valid_pipe[6];  end
+            4'd9:  begin wr_idx_sel = wr_idx_pipe[9];  coeff_valid_sel = valid_pipe[9];  end
+            4'd10: begin wr_idx_sel = wr_idx_pipe[10]; coeff_valid_sel = valid_pipe[10]; end
             default: begin wr_idx_sel = wr_idx_pipe[2]; coeff_valid_sel = valid_pipe[2]; end
         endcase
     end

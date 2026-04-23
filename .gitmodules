@@ -4,3 +4,6 @@
 [submodule "build-tools"]
 	path = build-tools
 	url = ../build-tools.git
+[submodule "Memory/poly-mem-subsystem"]
+	path = Memory/poly-mem-subsystem
+	url = https://github.com/QREM-CORE/poly-mem-subsystem

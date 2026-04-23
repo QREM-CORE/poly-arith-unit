@@ -162,6 +162,7 @@ module pau_top #(
     // Address Generator & Twiddle Factor Signals
     logic [5:0]      tf_addr;
     logic            is_radix2;
+    logic            is_radix2_pe;
     logic [1:0]      pass_out;
     logic            is_intt;
     logic            is_cwm;
@@ -327,6 +328,16 @@ module pau_top #(
         .w3_o               (w3)
     );
 
+    // Align the radix selector with the delayed controller/data path that
+    // drives pe_unit on the cycle after the memory read request is issued.
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            is_radix2_pe <= 1'b0;
+        end else begin
+            is_radix2_pe <= is_radix2;
+        end
+    end
+
     // ==========================================================
     // CWM alignment helpers for the new scratch-backed row MAC
     // ==========================================================
@@ -359,7 +370,7 @@ module pau_top #(
     );
 
     delay_n #(
-        .DWIDTH (1),
+        .DWIDTH (COEFF_WIDTH),
         .DEPTH  (3)
     ) u_cwm_align_w0 (
         .clk    (clk),
@@ -435,7 +446,7 @@ module pau_top #(
         .rst                (rst),
         .valid_i            (pe_valid),
         .ctrl_i             (pe_ctrl),
-        .mode_i             (is_radix2),
+        .mode_i             (is_radix2_pe),
         .op_a0_i            (coeff_from_cmi[0][COEFF_WIDTH-1:0]),
         .op_a1_i            (coeff_from_cmi[1][COEFF_WIDTH-1:0]),
         .op_a2_i            (coeff_from_cmi[2][COEFF_WIDTH-1:0]),

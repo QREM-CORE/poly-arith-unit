@@ -11,6 +11,7 @@ module pau_top_tb;
     localparam int W          = 16;
     localparam int SEED_DEPTH = 32;
     localparam int SEED_W     = 64;
+    localparam int MEM_WORD_W = STORE_WIDTH;
     localparam int POLY_W     = $clog2(NUM_POLYS);
     localparam int COEFF_W    = $clog2(NCOEFF);
     localparam int SEED_IDX_W = $clog2(QREM_SEED_BEATS);
@@ -28,12 +29,12 @@ module pau_top_tb;
     logic [3:0]      pau_wr_en_o;
     logic [POLY_W-1:0] pau_wr_poly_id_o;
     logic [3:0][7:0] pau_wr_idx_o;
-    logic [3:0][15:0] pau_wr_data_o;
+    logic [3:0][MEM_WORD_W-1:0] pau_wr_data_o;
     logic       pau_rd_valid_i;
     logic [POLY_W-1:0] pau_rd_poly_id_i;
     logic [3:0][7:0] pau_rd_idx_i;
     logic [3:0]      pau_rd_lane_valid_i;
-    logic [3:0][15:0] pau_rd_data_i;
+    logic [3:0][MEM_WORD_W-1:0] pau_rd_data_i;
     logic       pau_stall_i;
 
     logic       pau_aux_req_o;
@@ -44,12 +45,12 @@ module pau_top_tb;
     logic [3:0]      pau_aux_wr_en_o;
     logic [POLY_W-1:0] pau_aux_wr_poly_id_o;
     logic [3:0][7:0] pau_aux_wr_idx_o;
-    logic [3:0][15:0] pau_aux_wr_data_o;
+    logic [3:0][MEM_WORD_W-1:0] pau_aux_wr_data_o;
     logic       pau_aux_rd_valid_i;
     logic [POLY_W-1:0] pau_aux_rd_poly_id_i;
     logic [3:0][7:0] pau_aux_rd_idx_i;
     logic [3:0]      pau_aux_rd_lane_valid_i;
-    logic [3:0][15:0] pau_aux_rd_data_i;
+    logic [3:0][MEM_WORD_W-1:0] pau_aux_rd_data_i;
 
     logic wipe_i;
     logic wipe_busy_o;
@@ -66,12 +67,12 @@ module pau_top_tb;
     logic [3:0] hsu_wr_en;
     logic [POLY_W-1:0] hsu_wr_poly_id;
     logic [3:0][COEFF_W-1:0] hsu_wr_idx;
-    logic [3:0][W-1:0] hsu_wr_data;
+    logic [3:0][MEM_WORD_W-1:0] hsu_wr_data;
     logic hsu_rd_valid;
     logic [POLY_W-1:0] hsu_rd_poly_id_o;
     logic [3:0][COEFF_W-1:0] hsu_rd_idx_o;
     logic [3:0] hsu_rd_lane_valid_o;
-    logic [3:0][W-1:0] hsu_rd_data;
+    logic [3:0][MEM_WORD_W-1:0] hsu_rd_data;
     logic hsu_stall;
 
     logic tr_req;
@@ -82,12 +83,12 @@ module pau_top_tb;
     logic [3:0] tr_wr_en;
     logic [POLY_W-1:0] tr_wr_poly_id;
     logic [3:0][COEFF_W-1:0] tr_wr_idx;
-    logic [3:0][W-1:0] tr_wr_data;
+    logic [3:0][MEM_WORD_W-1:0] tr_wr_data;
     logic tr_rd_valid;
     logic [POLY_W-1:0] tr_rd_poly_id_o;
     logic [3:0][COEFF_W-1:0] tr_rd_idx_o;
     logic [3:0] tr_rd_lane_valid_o;
-    logic [3:0][W-1:0] tr_rd_data;
+    logic [3:0][MEM_WORD_W-1:0] tr_rd_data;
     logic tr_stall;
 
     logic hsu_seed_req;
@@ -152,11 +153,14 @@ module pau_top_tb;
     );
 
     poly_mem_subsystem #(
-        .NUM_POLYS  (NUM_POLYS),
-        .NCOEFF     (NCOEFF),
-        .W          (W),
-        .SEED_DEPTH (SEED_DEPTH),
-        .SEED_W     (SEED_W)
+        .NUM_POLYS         (NUM_POLYS),
+        .NCOEFF            (NCOEFF),
+        .W                 (W),
+        .COEFF_W           (MEM_WORD_W),
+        .SEED_DEPTH        (SEED_DEPTH),
+        .SEED_W            (SEED_W),
+        .POLY_PRELOAD_EN   (1'b1),
+        .POLY_PRELOAD_MODE (0)
     ) u_mem (
         .clk(clk),
         .rst(rst),
@@ -308,6 +312,13 @@ module pau_top_tb;
             saw_primary_write    <= 1'b0;
             saw_primary_response <= 1'b0;
         end else begin
+            if ((|dut.pe_wb_en) && pau_stall_i)
+                $fatal(1, "PAU produced writeback while Memory reported stall");
+
+            if ((|dut.pe_wb_en) && !pau_stall_i &&
+                (pau_wr_en_o !== (dut.pe_wb_en & dut.u_cmi.coeff_valid_sel)))
+                $fatal(1, "PAU PE writeback enable did not match CMI-masked Memory write enable");
+
             if (pau_req_o)
                 saw_primary_req <= 1'b1;
             if (pau_req_o && pau_rd_en_o && (|pau_rd_lane_valid_o) && !pau_stall_i)
@@ -322,7 +333,7 @@ module pau_top_tb;
     initial begin
         rst       = 1'b1;
         start_i   = 1'b0;
-        op_type_i = PE_MODE_NTT;
+        op_type_i = PE_MODE_INTT;
         clear_other_clients();
         repeat (3) tick();
         expect_aux_idle();

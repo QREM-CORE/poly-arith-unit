@@ -228,6 +228,64 @@ module cmi_tb;
         if (pau_wr_data_o[2] !== 16'h1234 || pau_wr_data_o[3] !== 16'h5678)
             $fatal(1, "CMI latency-4 write data mismatch");
 
+        tick();
+        clear_inputs();
+
+        // ------------------------------------------------------
+        // 7) Writeback alignment for latency=6
+        // ------------------------------------------------------
+        coeff_idx_i[0]   = COEFF_W'(60);
+        coeff_idx_i[1]   = COEFF_W'(61);
+        coeff_idx_i[2]   = COEFF_W'(62);
+        coeff_idx_i[3]   = COEFF_W'(63);
+        coeff_valid_i    = 4'b1111;
+        wb_latency_i     = 4'd6;
+        tick();
+        clear_inputs();
+        repeat (5) tick();
+
+        wr_en_i          = 4'b1111;
+        wr_data_i[0]     = 16'h5000;
+        wr_data_i[1]     = 16'h5001;
+        wr_data_i[2]     = 16'h5002;
+        wr_data_i[3]     = 16'h5003;
+        wb_latency_i     = 4'd6;
+        #1;
+        if (pau_wr_en_o !== 4'b1111)
+            $fatal(1, "CMI latency-6 write enable mismatch");
+        if (pau_wr_idx_o[0] !== COEFF_W'(60) || pau_wr_idx_o[3] !== COEFF_W'(63))
+            $fatal(1, "CMI latency-6 write index mismatch");
+        if (pau_wr_data_o[0] !== 16'h5000 || pau_wr_data_o[3] !== 16'h5003)
+            $fatal(1, "CMI latency-6 write data mismatch");
+
+        tick();
+        clear_inputs();
+
+        // ------------------------------------------------------
+        // 8) Writeback alignment for latency=10
+        // ------------------------------------------------------
+        coeff_idx_i[0]   = COEFF_W'(80);
+        coeff_idx_i[1]   = COEFF_W'(81);
+        coeff_idx_i[2]   = COEFF_W'(82);
+        coeff_idx_i[3]   = COEFF_W'(83);
+        coeff_valid_i    = 4'b1111;
+        wb_latency_i     = 4'd10;
+        tick();
+        clear_inputs();
+        repeat (9) tick();
+
+        wr_en_i          = 4'b0110;
+        wr_data_i[1]     = 16'h9001;
+        wr_data_i[2]     = 16'h9002;
+        wb_latency_i     = 4'd10;
+        #1;
+        if (pau_wr_en_o !== 4'b0110)
+            $fatal(1, "CMI latency-10 write enable mismatch");
+        if (pau_wr_idx_o[1] !== COEFF_W'(81) || pau_wr_idx_o[2] !== COEFF_W'(82))
+            $fatal(1, "CMI latency-10 write index mismatch");
+        if (pau_wr_data_o[1] !== 16'h9001 || pau_wr_data_o[2] !== 16'h9002)
+            $fatal(1, "CMI latency-10 write data mismatch");
+
         $display("TB PASS");
         $finish;
     end
