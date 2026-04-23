@@ -16,7 +16,7 @@
 //                 --- valid_o [delay 4]-> mac_adder.valid_i
 //   TB (sim PM)   --- acc0 ------------> mac_adder.b0_i
 //                 --- acc1 ------------> mac_adder.b1_i
-//   TB control    --- init ------------> mac_adder.init_i
+//   TB control    --- first_term ------> mac_adder.first_term_i
 //
 // Pipeline Alignment (Critical Design Notes):
 //
@@ -91,7 +91,7 @@ module cwm_mac_integration_tb();
     coeff_t     zeta_delayed;
 
     // MAC Adder Signals
-    logic       mac_init_i;
+    logic       mac_first_term_i;
     logic       mac_valid_i;
     coeff_t     mac_a0_i, mac_a1_i;
     coeff_t     mac_b0_i, mac_b1_i;
@@ -195,7 +195,7 @@ module cwm_mac_integration_tb();
     mac_adder u_mac_adder (
         .clk        (clk),
         .rst        (rst),
-        .init_i     (mac_init_i),
+        .first_term_i(mac_first_term_i),
         .valid_i    (mac_valid_i),
         .a0_i       (mac_a0_i),
         .b0_i       (mac_b0_i),
@@ -330,14 +330,14 @@ module cwm_mac_integration_tb();
 
     // ==========================================================
     // Task: Drive one pass and collect MAC outputs
-    // Manages the init/accumulate control and PM feedback.
+    // Manages the first-term/accumulate control and PM feedback.
     // ==========================================================
     task automatic drive_cwm_mac_pass(
         input cwm_stimulus_t stim [0:NUM_PAIRS-1],
         input logic          is_first_pass
     );
-        // Set MAC init control
-        mac_init_i <= is_first_pass ? 1'b1 : 1'b0;
+        // Set MAC first-term control
+        mac_first_term_i <= is_first_pass ? 1'b1 : 1'b0;
 
         // Start PM feedback driver BEFORE CWM drive so feedback
         // values (sim_pm) are pre-loaded on mac_b0/b1 well before
@@ -508,7 +508,7 @@ module cwm_mac_integration_tb();
         $display("--- Phase 1: Single-Shot CWM -> MAC Init ---");
 
         rst = 1;
-        mac_init_i = 1'b1;
+        mac_first_term_i = 1'b1;
         mac_b0_i = '0; mac_b1_i = '0;
         repeat(5) @(posedge clk);
         rst = 0;
@@ -522,7 +522,7 @@ module cwm_mac_integration_tb();
         @(posedge clk);
         pe_valid_i <= 1'b1;
         pe_ctrl_i  <= PE_MODE_CWM;
-        mac_init_i <= 1'b1;
+        mac_first_term_i <= 1'b1;
         pe_x0 <= 12'd100; pe_x1 <= 12'd200;
         pe_y0 <= 12'd300; pe_y1 <= 12'd400;
         zeta_stim <= 12'd17;
@@ -544,10 +544,10 @@ module cwm_mac_integration_tb();
                 $display("   MAC output: z0=%0d (exp %0d), z1=%0d (exp %0d)",
                          mac_z0_o, exp.c0, mac_z1_o, exp.c1);
                 if (mac_z0_o == exp.c0 && mac_z1_o == exp.c1) begin
-                    $display("   [PASS] Single-shot init passthrough correct!");
+                    $display("   [PASS] Single-shot first-term passthrough correct!");
                     pass_count++;
                 end else begin
-                    $display("   [FAIL] Single-shot init mismatch!");
+                    $display("   [FAIL] Single-shot first-term mismatch!");
                     error_count++;
                 end
                 matched = 1;
@@ -576,13 +576,13 @@ module cwm_mac_integration_tb();
         // --- Pass 0: Init (j=0) ---
         $display("   Pass 0 (Init)...");
         rst = 1;
-        mac_init_i = 1'b1;
+        mac_first_term_i = 1'b1;
         mac_b0_i = '0; mac_b1_i = '0;
         repeat(5) @(posedge clk);
         rst = 0;
         repeat(2) @(posedge clk);
 
-        // Expected for init pass: just pass0 results
+        // Expected for first-term pass: just pass0 results
         for (int i = 0; i < NUM_PAIRS; i++) begin
             exp_acc_c0[i] = exp_pass0[i].c0;
             exp_acc_c1[i] = exp_pass0[i].c1;
@@ -646,9 +646,9 @@ module cwm_mac_integration_tb();
         expected_acc_c1 = gm_mod_add(exp_j0.c1, exp_j1.c1);
         $display("   Acc Golden: c0=%0d, c1=%0d", expected_acc_c0, expected_acc_c1);
 
-        // --- Drive j=0 (init) ---
+        // --- Drive j=0 (first term) ---
         rst = 1;
-        mac_init_i = 1'b1;
+        mac_first_term_i = 1'b1;
         mac_b0_i = '0; mac_b1_i = '0;
         repeat(5) @(posedge clk);
         rst = 0;
@@ -691,7 +691,7 @@ module cwm_mac_integration_tb();
             end
 
             repeat(10) @(posedge clk);
-            mac_init_i <= 1'b0;
+            mac_first_term_i <= 1'b0;
             mac_b0_i <= saved_c0;
             mac_b1_i <= saved_c1;
 
@@ -748,7 +748,7 @@ module cwm_mac_integration_tb();
         pe_x0 = 0; pe_x1 = 0; pe_x2 = 0; pe_x3 = 0;
         pe_y0 = 0; pe_y1 = 0; pe_y2 = 0; pe_y3 = 0;
         zeta_stim = 0; pe_w1 = 0; pe_w2 = 0; pe_w3 = 0;
-        mac_init_i = 1;
+        mac_first_term_i = 1;
         mac_b0_i = 0; mac_b1_i = 0;
         output_idx = 0;
         current_test_phase = 0;

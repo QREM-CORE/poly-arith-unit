@@ -1,49 +1,31 @@
 /*
- * Module Name: mac_adder (Multiply-Accumulate Adder)
- * Author(s): Salwan Aldhahab
+ * Module Name: mac_adder
+ * Author(s): Salwan Aldhahab, Quardin Lyttle
  * Target: FIPS 203 (ML-KEM / Kyber) Hardware Accelerator
  *
  * Reference:
- * Architecture based on the "Unified Polynomial Arithmetic Module (UniPAM)" from:
- * H. Jung, Q. D. Truong and H. Lee, "Highly-Efficient Hardware Architecture
- * for ML-KEM PQC Standard," in IEEE Open Journal of Circuits and Systems, 2025,
- * doi: 10.1109/OJCAS.2025.3591136. (Inha University)
+ * Architecture based on the "Unified Polynomial Arithmetic Module (UniPAM)"
+ * from H. Jung, Q. D. Truong and H. Lee,
+ * "Highly-Efficient Hardware Architecture for ML-KEM PQC Standard,"
+ * IEEE Open Journal of Circuits and Systems, 2025.
  *
  * Description:
- * This module implements the Multiply-Accumulate (MAC) adder for the UniPAM
- * architecture. It enables the seamless transition from Coordinate-Wise
- * Multiplication (CWM) mode to MAC mode, which is essential for matrix-vector
- * multiplications in ML-KEM (e.g., t_hat = A_hat ∘ s_hat + e in NTT domain).
+ *   Legacy registered wrapper around a 2-lane modular add datapath.
  *
- * The MAC adder sits at the output of the Arithmetic Unit (AU) and performs
- * modular accumulation of successive CWM results. For each element of the
- * output vector in ML-KEM matrix-vector multiplication:
+ * Why this file changed:
+ *   The original control used `init_i`, where the real accumulation happened
+ *   when the signal was low. That was functionally fine but mentally awkward.
+ *   This branch switches to a positive `first_term_i` naming convention:
  *
- *   result_hat[i] = sum_{j=0}^{k-1} ( A_hat[i][j] ∘ s_hat[j] )
+ *     first_term_i = 1 -> pass the first CWM result through unchanged
+ *     first_term_i = 0 -> accumulate new_cwm + old_partial_sum
  *
- * The first CWM result (j=0) is passed through directly, and subsequent
- * results (j=1..k-1) are accumulated via modular addition (mod q = 3329)
- * with the partial sum read back from Polynomial Memory (PM).
- *
- * Architecture:
- * Two parallel modular adders (mod_add instances) process the two coefficient
- * lanes produced by CWM mode (2 coefficients per clock cycle, 128 CCs for a
- * full 256-coefficient polynomial). A bypass multiplexer controlled by `init_i`
- * selects between:
- *   - init_i = 1: Passthrough (stores first CWM result as initial accumulation)
- *   - init_i = 0: Accumulate (adds new CWM result to existing partial sum)
- *
- * Data Flow:
- *   PM[read] --> CMI --> AU (CWM) --+--> MAC Adder --> CMI --> PM[write]
- *                                   |       ^
- *                                   |       |
- *                  PM[acc_read] ----+-------+
- *                  (previous partial sum)
- *
- * Latency: 1 Clock Cycle (Registered output)
- * Throughput: 2 coefficients per clock cycle (matching CWM output rate)
- * Total MAC operation: 128 CCs for a full 256-coefficient polynomial
+ *   A scratchpad-backed accumulator (mac_row_accum.sv) is now the preferred
+ *   architecture for row-wise matrix operations. This module remains useful as
+ *   a small timing-clean wrapper and for existing directed tests.
  */
+
+`timescale 1ns / 1ps
 
 import poly_arith_pkg::*;
 
@@ -52,70 +34,44 @@ module mac_adder (
     input   logic           rst,
 
     // Control
-    input   logic           init_i,     // 1: Passthrough (first CWM iteration)
-                                        // 0: Accumulate  (subsequent iterations)
-    input   logic           valid_i,    // Input data valid
+    input   logic           first_term_i, // 1 = overwrite/seed, 0 = accumulate
+    input   logic           valid_i,
 
-    // Lane 0: Even-index coefficient (c_2i)
-    input   coeff_t         a0_i,       // New CWM result from AU
-    input   coeff_t         b0_i,       // Previous partial sum from PM
+    // New CWM result pair
+    input   coeff_t         a0_i,
+    input   coeff_t         a1_i,
 
-    // Lane 1: Odd-index coefficient (c_2i+1)
-    input   coeff_t         a1_i,       // New CWM result from AU
-    input   coeff_t         b1_i,       // Previous partial sum from PM
+    // Previous partial sum pair
+    input   coeff_t         b0_i,
+    input   coeff_t         b1_i,
 
-    // Accumulated Output (to PM write port)
-    output  coeff_t         z0_o,       // Accumulated result lane 0
-    output  coeff_t         z1_o,       // Accumulated result lane 1
-
-    output  logic           valid_o     // Output valid
+    // Registered accumulated output pair
+    output  coeff_t         z0_o,
+    output  coeff_t         z1_o,
+    output  logic           valid_o
 );
 
-    // =========================================================================
-    // Internal Wires
-    // =========================================================================
-    coeff_t mod_add_0_result;
-    coeff_t mod_add_1_result;
+    coeff_t pair_sum_0;
+    coeff_t pair_sum_1;
     coeff_t mac_result_0;
     coeff_t mac_result_1;
 
-    // =========================================================================
-    // Modular Adder Instantiations
-    // =========================================================================
-
-    // -------- Lane 0 Modular Adder --------
-    // Computes: (new_coeff_0 + old_acc_0) mod 3329
-    mod_add u_mod_add_0 (
-        .op1_i      (a0_i),
-        .op2_i      (b0_i),
-
-        .result_o   (mod_add_0_result)
+    // Reuse the pure combinational pair-add helper so the arithmetic is shared
+    // with the new scratchpad-backed row accumulator.
+    mac_pair_add u_pair_add (
+        .acc0_i (b0_i),
+        .acc1_i (b1_i),
+        .cwm0_i (a0_i),
+        .cwm1_i (a1_i),
+        .sum0_o (pair_sum_0),
+        .sum1_o (pair_sum_1)
     );
 
-    // -------- Lane 1 Modular Adder --------
-    // Computes: (new_coeff_1 + old_acc_1) mod 3329
-    mod_add u_mod_add_1 (
-        .op1_i      (a1_i),
-        .op2_i      (b1_i),
+    // Positive semantics are much easier for the controller to reason about.
+    assign mac_result_0 = first_term_i ? a0_i : pair_sum_0;
+    assign mac_result_1 = first_term_i ? a1_i : pair_sum_1;
 
-        .result_o   (mod_add_1_result)
-    );
-
-    // =========================================================================
-    // Init / Accumulate Bypass MUX
-    // =========================================================================
-    // When init_i = 1 (first CWM in accumulation sequence):
-    //   Output = new CWM result (passthrough, no addition needed)
-    // When init_i = 0 (subsequent CWMs):
-    //   Output = (new CWM result + old partial sum) mod q
-    assign mac_result_0 = init_i ? a0_i : mod_add_0_result;
-    assign mac_result_1 = init_i ? a1_i : mod_add_1_result;
-
-    // =========================================================================
-    // Output Registration (1 CC Latency)
-    // =========================================================================
-    // Registered output breaks the combinational path from AU to PM write,
-    // ensuring clean timing closure across the datapath.
+    // Registered output keeps the wrapper behavior from the original module.
     always_ff @(posedge clk) begin
         if (rst) begin
             z0_o    <= '0;
@@ -129,21 +85,3 @@ module mac_adder (
     end
 
 endmodule
-
-/* ------- Connection Digram For Future Reference -------
-*                    ┌──────────────────────────────────┐
-*                    │         Arithmetic Unit          │
-*                    │                                  │
-*  operand_a0 ──►    │ PE in CWM mode                   │──► cwm_result_0 ──► a0_i ┐
-*  operand_a1 ──►    │ (2 coefficients/CC)              │──► cwm_result_1 ──► a1_i ┤
-*  operand_b0 ──►    │                                  │                          │
-*  operand_b1 ──►    │                                  │                   ┌──────▼─────┐
-*                    └──────────────────────────────────┘                   │ mac_adder  │
-*                                                                           │            │
-*  PM[acc_addr] ──► partial_sum_0 ──────────────────────────────────► b0_i  │            │──► z0_o ──► PM[write]
-*  PM[acc_addr] ──► partial_sum_1 ──────────────────────────────────► b1_i  │            │──► z1_o ──► PM[write]
-*                                                                           │            │
-*  controller ──► init_i (j==0 ? 1 : 0)                                     │            │
-*  controller ──► valid_i                                                   │            │
-*                                                                           └────────────┘
-*/

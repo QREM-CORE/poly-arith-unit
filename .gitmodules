@@ -1,3 +1,9 @@
 [submodule "lib/common_rtl"]
 	path = lib/common_rtl
 	url = ../common-rtl.git
+[submodule "build-tools"]
+	path = build-tools
+	url = ../build-tools.git
+[submodule "Memory/poly-mem-subsystem"]
+	path = Memory/poly-mem-subsystem
+	url = https://github.com/QREM-CORE/poly-mem-subsystem

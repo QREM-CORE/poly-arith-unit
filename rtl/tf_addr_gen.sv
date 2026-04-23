@@ -63,6 +63,7 @@ module tf_addr_gen (
 
     // ---- Control Interface (from AU Controller) ----
     input   logic           start_i,        // Pulse high for 1 cycle to begin
+    input   logic           advance_i,      // Advance on a real issued TF consumer beat
     input   pe_mode_e       ctrl_i,         // Operating mode (NTT, INTT, CWM)
     input   logic [1:0]     pass_idx_i,     // Which pass to run (0..3)
 
@@ -133,9 +134,10 @@ module tf_addr_gen (
             case (state_r)
                 S_PASS_1: begin
                     if (is_intt_r) begin
-                        // INTT Pass 1: R2, 64 blocks x 2 BFs
+                        // INTT Pass 1: R2, 64 groups x 1 issue cycle
+                        // PE0 and PE2 perform the two R2 butterflies in parallel.
                         blocks_max     = 6'd63;
-                        bfs_max        = 6'd1;
+                        bfs_max        = 6'd0;
                         pass_is_radix2 = 1'b1;
                     end else begin
                         // NTT Pass 1: R4, 1 block x 64 BFs
@@ -171,9 +173,10 @@ module tf_addr_gen (
                         blocks_max = 6'd0;
                         bfs_max    = 6'd63;
                     end else begin
-                        // NTT Pass 4: R2, 64 blocks x 2 BFs
+                        // NTT Pass 4: R2, 64 groups x 1 issue cycle
+                        // PE0 and PE2 perform the two R2 butterflies in parallel.
                         blocks_max     = 6'd63;
-                        bfs_max        = 6'd1;
+                        bfs_max        = 6'd0;
                         pass_is_radix2 = 1'b1;
                     end
                 end
@@ -236,7 +239,7 @@ module tf_addr_gen (
             end
 
             S_PASS_1, S_PASS_2, S_PASS_3, S_PASS_4: begin
-                if (pass_last)
+                if (advance_i && pass_last)
                     state_next = S_IDLE;
             end
 
@@ -275,29 +278,33 @@ module tf_addr_gen (
                 end
 
                 S_PASS_1, S_PASS_2, S_PASS_3, S_PASS_4: begin
-                    if (pass_last) begin
-                        // End of pass: reset per-pass counters for next pass
-                        bf_cnt_r    <= '0;
-                        block_cnt_r <= '0;
-                        r2_cnt_r    <= '0;
-                        // r4_cnt_r persists across R4 passes AND increments at every
-                        // block boundary (including the last block of a pass) to
-                        // maintain the sequential t++ semantics (0, 1..4, 5..20).
-                        if (!pass_is_radix2 && !is_cwm_r)
-                            r4_cnt_r <= r4_cnt_r + 5'd1;
-                    end else if (bf_last) begin
-                        // End of block: advance to next block
-                        bf_cnt_r    <= '0;
-                        block_cnt_r <= block_cnt_r + 6'd1;
+                    if (advance_i) begin
+                        if (pass_last) begin
+                            // End of pass: reset per-pass counters for next pass.
+                            // Advance only when the controller actually issued the
+                            // matching PE/ROM beat so TF state cannot outrun data.
+                            bf_cnt_r    <= '0;
+                            block_cnt_r <= '0;
+                            r2_cnt_r    <= '0;
+                            // r4_cnt_r persists across R4 passes AND increments at every
+                            // block boundary (including the last block of a pass) to
+                            // maintain the sequential t++ semantics (0, 1..4, 5..20).
+                            if (!pass_is_radix2 && !is_cwm_r)
+                                r4_cnt_r <= r4_cnt_r + 5'd1;
+                        end else if (bf_last) begin
+                            // End of block: advance to next block
+                            bf_cnt_r    <= '0;
+                            block_cnt_r <= block_cnt_r + 6'd1;
 
-                        // Increment appropriate ROM counter at block boundary
-                        if (pass_is_radix2) begin
-                            r2_cnt_r <= r2_cnt_r + 6'd1;
-                        end else if (!is_cwm_r) begin
-                            r4_cnt_r <= r4_cnt_r + 5'd1;
+                            // Increment appropriate ROM counter at block boundary
+                            if (pass_is_radix2) begin
+                                r2_cnt_r <= r2_cnt_r + 6'd1;
+                            end else if (!is_cwm_r) begin
+                                r4_cnt_r <= r4_cnt_r + 5'd1;
+                            end
+                        end else begin
+                            bf_cnt_r <= bf_cnt_r + 6'd1;
                         end
-                    end else begin
-                        bf_cnt_r <= bf_cnt_r + 6'd1;
                     end
                 end
 
