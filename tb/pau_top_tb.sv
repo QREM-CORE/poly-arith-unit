@@ -113,6 +113,9 @@ module pau_top_tb;
     bit saw_primary_read;
     bit saw_primary_write;
     bit saw_primary_response;
+    bit saw_aux_req;
+    bit saw_aux_read;
+    bit saw_aux_response;
 
     pau_top #(
         .NUM_POLYS(NUM_POLYS)
@@ -260,13 +263,51 @@ module pau_top_tb;
     task automatic expect_aux_idle;
         begin
             #1;
-            if (pau_aux_req_o || pau_aux_rd_en_o || (|pau_aux_rd_lane_valid_o) ||
-                (|pau_aux_wr_en_o) || pau_aux_rd_valid_i)
-                $fatal(1, "PAU auxiliary Memory path must remain tied idle in this revision");
-            if (pau_aux_rd_poly_id_o !== '0 || pau_aux_rd_idx_o !== '0 ||
-                pau_aux_wr_poly_id_o !== '0 || pau_aux_wr_idx_o !== '0 ||
-                pau_aux_wr_data_o !== '0)
-                $fatal(1, "PAU auxiliary descriptor/data should be zero while idle");
+            if (rst) begin
+                if ((pau_aux_req_o === 1'b1) || (pau_aux_rd_en_o === 1'b1) ||
+                    ((|pau_aux_rd_lane_valid_o) === 1'b1) || ((|pau_aux_wr_en_o) === 1'b1) ||
+                    (pau_aux_rd_valid_i === 1'b1))
+                    $fatal(1, "PAU auxiliary Memory path must stay inactive during reset");
+            end else begin
+                if (pau_aux_req_o || pau_aux_rd_en_o || (|pau_aux_rd_lane_valid_o) ||
+                    (|pau_aux_wr_en_o) || pau_aux_rd_valid_i)
+                    $fatal(1, "PAU auxiliary Memory path should be idle before CWM starts");
+                if (pau_aux_rd_poly_id_o !== '0 || pau_aux_rd_idx_o !== '0 ||
+                    pau_aux_wr_poly_id_o !== '0 || pau_aux_wr_idx_o !== '0 ||
+                    pau_aux_wr_data_o !== '0)
+                    $fatal(1, "PAU auxiliary descriptor/data should be zero while idle");
+            end
+        end
+    endtask
+
+    task automatic expect_cwm_aux_read_only;
+        begin
+            #1;
+            if ((|pau_aux_wr_en_o) || pau_aux_wr_poly_id_o !== '0 ||
+                pau_aux_wr_idx_o !== '0 || pau_aux_wr_data_o !== '0)
+                $fatal(1, "PAU auxiliary path should remain read-only for CWM");
+
+            if (pau_aux_req_o || pau_aux_rd_en_o || (|pau_aux_rd_lane_valid_o)) begin
+                if (!(pau_aux_req_o && pau_aux_rd_en_o))
+                    $fatal(1, "PAU auxiliary CWM activity must be a read request");
+                if (!(pau_req_o && pau_rd_en_o))
+                    $fatal(1, "PAU auxiliary CWM read must accompany a primary read");
+                if (pau_aux_rd_lane_valid_o !== 4'b0011)
+                    $fatal(1, "PAU auxiliary CWM read should request exactly two lanes");
+                if (pau_aux_rd_idx_o !== pau_rd_idx_o)
+                    $fatal(1, "PAU auxiliary CWM read indices should mirror the primary pair");
+                if ((pau_aux_rd_poly_id_o < POLY_W'(POLY_ID_S0)) ||
+                    (pau_aux_rd_poly_id_o > POLY_W'(POLY_ID_S3)))
+                    $fatal(1, "PAU auxiliary CWM read should target an S polynomial slot");
+            end
+
+            if (pau_aux_rd_valid_i) begin
+                if (pau_aux_rd_lane_valid_i !== 4'b0011)
+                    $fatal(1, "PAU auxiliary CWM response should return exactly two lanes");
+                if ((pau_aux_rd_poly_id_i < POLY_W'(POLY_ID_S0)) ||
+                    (pau_aux_rd_poly_id_i > POLY_W'(POLY_ID_S3)))
+                    $fatal(1, "PAU auxiliary CWM response should come from an S polynomial slot");
+            end
         end
     endtask
 
@@ -311,6 +352,9 @@ module pau_top_tb;
             saw_primary_read     <= 1'b0;
             saw_primary_write    <= 1'b0;
             saw_primary_response <= 1'b0;
+            saw_aux_req          <= 1'b0;
+            saw_aux_read         <= 1'b0;
+            saw_aux_response     <= 1'b0;
         end else begin
             if ((|dut.pe_wb_en) && pau_stall_i)
                 $fatal(1, "PAU produced writeback while Memory reported stall");
@@ -327,13 +371,19 @@ module pau_top_tb;
                 saw_primary_write <= 1'b1;
             if (pau_rd_valid_i)
                 saw_primary_response <= 1'b1;
+            if (pau_aux_req_o)
+                saw_aux_req <= 1'b1;
+            if (pau_aux_req_o && pau_aux_rd_en_o && !pau_stall_i)
+                saw_aux_read <= 1'b1;
+            if (pau_aux_rd_valid_i)
+                saw_aux_response <= 1'b1;
         end
     end
 
     initial begin
         rst       = 1'b1;
         start_i   = 1'b0;
-        op_type_i = PE_MODE_INTT;
+        op_type_i = PE_MODE_CWM;
         clear_other_clients();
         repeat (3) tick();
         expect_aux_idle();
@@ -348,9 +398,9 @@ module pau_top_tb;
 
         repeat (450) begin
             tick();
-            expect_aux_idle();
+            expect_cwm_aux_read_only();
             if (mem_fault_o)
-                $fatal(1, "Unexpected Memory fault during PAU NTT smoke");
+                $fatal(1, "Unexpected Memory fault during PAU CWM smoke");
         end
 
         if (!saw_primary_req)
@@ -361,6 +411,12 @@ module pau_top_tb;
             $fatal(1, "PAU top did not issue primary Memory writeback");
         if (!saw_primary_response)
             $fatal(1, "PAU top did not receive primary Memory read data");
+        if (!saw_aux_req)
+            $fatal(1, "PAU top did not drive the auxiliary CWM descriptor");
+        if (!saw_aux_read)
+            $fatal(1, "PAU top did not issue auxiliary CWM reads");
+        if (!saw_aux_response)
+            $fatal(1, "PAU top did not receive auxiliary CWM read data");
 
         $display("TB PASS");
         $finish;

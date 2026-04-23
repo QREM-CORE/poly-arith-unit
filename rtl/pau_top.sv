@@ -83,31 +83,11 @@ module pau_top #(
     localparam int POLY_W = $clog2(NUM_POLYS);
     localparam logic [POLY_W-1:0] DEFAULT_POLY_ID = '0;
 
-    // NOTE(PAU/Mem): Current Memory exposes a PAU auxiliary descriptor so PAU
-    // can own both internal memory ports for legal read/read, read/write, or
-    // write/write phases. This top-level intentionally drives aux idle until
-    // the PAU controller/CMI grow explicit second-source and split-destination
-    // descriptors.
-    //
-    // Safe today:
-    //   - NTT/INTT-style primary in-place read/write traffic.
-    //
-    // Not proven by this primary-only path:
-    //   - CWM dual-read of A_hat[i][j] and s_hat[j].
-    //   - ADD/SUB dual-source reads for X and Y operands.
-    //   - CWM row finalize that reads EI/e_hat and writes final T/t_hat.
-    //
-    // TODO(PAU): drive these aux ports from a real dual-source CMI path before
-    // treating CWM, ADD, or SUB as Memory-interface complete.
-    assign pau_aux_req_o           = 1'b0;
-    assign pau_aux_rd_en_o         = 1'b0;
-    assign pau_aux_rd_poly_id_o    = '0;
-    assign pau_aux_rd_idx_o        = '0;
-    assign pau_aux_rd_lane_valid_o = '0;
-    assign pau_aux_wr_en_o         = '0;
-    assign pau_aux_wr_poly_id_o    = '0;
-    assign pau_aux_wr_idx_o        = '0;
-    assign pau_aux_wr_data_o       = '0;
+    // NOTE(PAU/Mem): CWM now consumes the PAU auxiliary descriptor during the
+    // accepted accumulation beats so the PE sees {A_hat[2p], A_hat[2p+1],
+    // s_hat[2p], s_hat[2p+1]} in the same cycle. NTT / INTT / COMP / DECOMP
+    // continue to use only the primary descriptor. ADD/SUB still needs a real
+    // secondary-operand schedule on this path.
 
     // Controller -> TF/PE side
     logic            ctl_ready;
@@ -268,10 +248,9 @@ module pau_top #(
     );
 
     // ---- CMI ----
-    // NOTE(PAU/Mem): u_cmi currently drives only the Memory primary PAU
-    // descriptor. Memory can accept a PAU-owned auxiliary descriptor in the
-    // same cycle, but that path is deliberately tied idle above.
-    // TODO(PAU): add a second operand/source descriptor for ADD/SUB and CWM.
+    // NOTE(PAU/Mem): u_cmi now mirrors accepted CWM accumulation beats onto the
+    // Memory auxiliary PAU descriptor so pe_unit receives both source pairs in
+    // one cycle. ADD/SUB still needs its own secondary-operand schedule here.
     cmi #(
         .NUM_POLYS(NUM_POLYS)
     ) u_cmi (
@@ -283,6 +262,9 @@ module pau_top #(
         .v_i                    (cmi_v),
         .rd_en_i                (cmi_rd_en),
         .wb_latency_i           (cmi_wb_latency),
+        .cwm_mode_i             (is_cwm),
+        .cwm_issue_i            (mac_issue),
+        .cwm_drain_issue_i      (mac_drain_issue),
         .wr_en_i                (pe_wb_en),
         .wr_data_i              (pe_wb_data),
         .coeff_o                (coeff_from_cmi),
@@ -301,7 +283,21 @@ module pau_top #(
         .pau_rd_idx_i           (pau_rd_idx_i),
         .pau_rd_lane_valid_i    (pau_rd_lane_valid_i),
         .pau_rd_data_i          (pau_rd_data_i),
-        .pau_stall_i            (pau_stall_i)
+        .pau_stall_i            (pau_stall_i),
+        .pau_aux_req_o          (pau_aux_req_o),
+        .pau_aux_rd_en_o        (pau_aux_rd_en_o),
+        .pau_aux_rd_poly_id_o   (pau_aux_rd_poly_id_o),
+        .pau_aux_rd_idx_o       (pau_aux_rd_idx_o),
+        .pau_aux_rd_lane_valid_o(pau_aux_rd_lane_valid_o),
+        .pau_aux_wr_en_o        (pau_aux_wr_en_o),
+        .pau_aux_wr_poly_id_o   (pau_aux_wr_poly_id_o),
+        .pau_aux_wr_idx_o       (pau_aux_wr_idx_o),
+        .pau_aux_wr_data_o      (pau_aux_wr_data_o),
+        .pau_aux_rd_valid_i     (pau_aux_rd_valid_i),
+        .pau_aux_rd_poly_id_i   (pau_aux_rd_poly_id_i),
+        .pau_aux_rd_idx_i       (pau_aux_rd_idx_i),
+        .pau_aux_rd_lane_valid_i(pau_aux_rd_lane_valid_i),
+        .pau_aux_rd_data_i      (pau_aux_rd_data_i)
     );
 
     // ---- Twiddle Factor Address Generator ----
@@ -335,49 +331,20 @@ module pau_top #(
     // ==========================================================
     // CWM alignment helpers for the new scratch-backed row MAC
     // ==========================================================
-    // These delays mirror the integration testbench findings:
-    //   - z1 needs +1 cycle to align with z2
-    //   - valid needs +4 cycles to align with the true CWM data
-    //   - w0/zeta needs +3 cycles on the CWM path into PE3
+    // pe_unit already aligns the CWM data and valid outputs internally:
+    //   - z1 is delayed by +1 to match z2
+    //   - valid_o is emitted on the same 8-cycle boundary
+    //   - op_b0/w0 is delayed inside pe_unit before PE3 consumes it
     //
-    // The existing PAU top previously omitted this and therefore did not
-    // present a trustworthy CWM integration path. The goal here is to make
-    // the new branch explicit about that timing.
-    delay_n #(
-        .DWIDTH (COEFF_WIDTH),
-        .DEPTH  (1)
-    ) u_cwm_align_z1 (
-        .clk    (clk),
-        .rst    (rst),
-        .data_i (z1_o),
-        .data_o (cwm_z1_aligned)
-    );
+    // Feed those aligned signals straight into the row accumulator and only
+    // delay the controller bookkeeping to the same 8-cycle output boundary.
+    assign cwm_z1_aligned    = z1_o;
+    assign cwm_valid_aligned = pe_wb_valid && (pe_ctrl == PE_MODE_CWM);
+    assign w0_cwm_aligned    = w0;
 
     delay_n #(
         .DWIDTH (1),
-        .DEPTH  (4)
-    ) u_cwm_align_valid (
-        .clk    (clk),
-        .rst    (rst),
-        .data_i (pe_wb_valid),
-        .data_o (cwm_valid_aligned)
-    );
-
-    delay_n #(
-        .DWIDTH (COEFF_WIDTH),
-        .DEPTH  (3)
-    ) u_cwm_align_w0 (
-        .clk    (clk),
-        .rst    (rst),
-        .data_i (w0),
-        .data_o (w0_cwm_aligned)
-    );
-
-    // Row-accumulator bookkeeping is delayed from the controller's issue cycle
-    // to the true CWM output cycle seen by the scratch accumulator.
-    delay_n #(
-        .DWIDTH (1),
-        .DEPTH  (9)
+        .DEPTH  (8)
     ) u_cwm_align_first_term (
         .clk    (clk),
         .rst    (rst),
@@ -387,7 +354,7 @@ module pau_top #(
 
     delay_n #(
         .DWIDTH (7),
-        .DEPTH  (9)
+        .DEPTH  (8)
     ) u_cwm_align_pair_idx (
         .clk    (clk),
         .rst    (rst),
@@ -462,7 +429,7 @@ module pau_top #(
     mac_row_accum u_row_accum (
         .clk            (clk),
         .rst_n          (~rst),
-        .acc_fire_i     (cwm_valid_aligned && (pe_ctrl == PE_MODE_CWM)),
+        .acc_fire_i     (cwm_valid_aligned),
         .first_term_i   (cwm_first_term_aligned),
         .pair_idx_i     (cwm_pair_idx_aligned),
         .cwm0_i         (cwm_z1_aligned),
@@ -471,11 +438,10 @@ module pau_top #(
         // fused into the final t_hat writeback has actually returned from the
         // memory subsystem on the PAU read-response channel.
         //
-        // TODO(PAU, correctness): the present primary-only CMI uses one
-        // poly_id for both read and write. A real row-finalize phase must read
-        // EI/e_hat and write T0..T3/t_hat, so it needs either split read/write
-        // poly IDs or an aux-assisted request shape. Do not treat this drain
-        // plumbing as a complete Memory contract for KeyGen row commit.
+        // TODO(PAU, correctness): CMI now splits the fixed CWM read/write
+        // slots, but the controller still exposes only one base poly_id and no
+        // outer-row / outer-column schedule. The full KeyGen row contract still
+        // needs explicit ownership of which A_j, s_j, and T_i slots are active.
         .drain_req_i    (drain_issue_d1 && pau_rd_valid_i),
         .drain_idx_i    (drain_idx_d1),
         .fuse_e_i       (fuse_e_d1),

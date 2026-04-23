@@ -671,15 +671,20 @@ module pau_controller #(
     // Keep the PE radix mode alive for the full controller-owned pass lifetime,
     // including the drain window after the final issue beat.
     assign tf_start_o         = (state_r == S_SETUP) && pass_uses_tf;
-    assign tf_step_o          = issue_fire && pass_uses_tf;
+    // CWM consumes 128 coefficient pairs but reuses each 64-entry omega value
+    // for two consecutive issues. Advancing every other accepted issue keeps
+    // the twiddle stream aligned with the current single-basecase PE datapath.
+    assign tf_step_o          = pass_uses_tf &&
+                                issue_fire &&
+                                ((op_r != PE_MODE_CWM) || !issue_addr_r[0]);
     assign pass_is_radix2_o   = pass_is_radix2 &&
                                 ((state_r == S_RUN) || (state_r == S_DRAIN));
     assign pass_idx_o         = pass_idx_r;
 
-    // NOTE(PAU/Mem): A single poly_id is still used for both primary reads and
-    // writeback. That is compatible with NTT/INTT in-place transforms. CWM
-    // row-finalize needs to read EI/e_hat and write T0..T3/t_hat, and ADD/SUB
-    // needs a second source poly_id, so future CMI work must split this.
+    // NOTE(PAU/Mem): The controller still exports one base poly_id per job.
+    // CMI interprets that base slot differently for CWM accumulation/drain so
+    // the Memory map can fetch A_hat + s_hat and write back into T slots.
+    // ADD/SUB still needs an explicit second-source schedule on top of this.
     assign cmi_poly_id_o = poly_id_r;
 
     // CWM drain needs to keep reading e_hat pairs while the row accumulator
@@ -727,7 +732,9 @@ module pau_controller #(
     // Expose the row-accumulator control plane so pau_top can delay/align it
     // to the real CWM datapath latency.
     assign mac_issue_o       = (op_r == PE_MODE_CWM) && issue_fire;
-    assign mac_first_term_o  = (issue_addr_r == ZERO8);
+    // The current controller performs one CWM source polynomial pass before
+    // draining. Every accepted issue is therefore the first term for its pair.
+    assign mac_first_term_o  = (op_r == PE_MODE_CWM) && (state_r == S_RUN);
     assign mac_pair_idx_o    = issue_addr_r[6:0];
     assign mac_drain_issue_o = cwm_drain_issue;
     assign mac_drain_idx_o   = cwm_drain_idx_r;
