@@ -44,7 +44,7 @@ import qrem_mem_map_pkg::*;
 module cmi #(
     parameter int N          = 256,
     parameter int W          = 16,
-    parameter int NUM_POLYS  = 32,
+    parameter int NUM_POLYS  = qrem_global_pkg::NUM_POLYS,
     parameter int MAX_WB_LAT = 10
 )(
     input  logic clk,

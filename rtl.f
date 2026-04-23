@@ -1,5 +1,6 @@
 # --- Submodules ---
 -f Memory/poly-mem-subsystem/rtl.f
+-f lib/common_rtl/rtl.f
 
 # --- Packages (Must be compiled first) ---
 rtl/poly_arith_pkg.sv

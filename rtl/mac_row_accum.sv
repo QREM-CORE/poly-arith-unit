@@ -169,10 +169,8 @@ module mac_row_accum #(
     // ------------------------------------------------------------
     always_ff @(posedge clk) begin
         if (rst) begin
-            for (p = 0; p < NUM_PAIRS; p++) begin
-                acc0_mem[p] <= '0;
-                acc1_mem[p] <= '0;
-            end
+            acc0_mem <= '{default: '0};
+            acc1_mem <= '{default: '0};
             last_wr_valid_q    <= 1'b0;
             last_wr_pair_idx_q <= '0;
             last_wr_acc0_q     <= '0;

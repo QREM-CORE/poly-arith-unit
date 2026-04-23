@@ -4,7 +4,7 @@ import poly_arith_pkg::*;
 
 module pau_controller_tb;
 
-    localparam int NUM_POLYS          = 32;
+    localparam int NUM_POLYS          = qrem_global_pkg::NUM_POLYS;
     localparam int POLY_W             = $clog2(NUM_POLYS);
     localparam int CWM_NUM_TERMS      = 3;
     localparam int CWM_PAIRS_PER_TERM = 128;

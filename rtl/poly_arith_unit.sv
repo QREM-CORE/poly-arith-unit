@@ -33,7 +33,7 @@ import poly_arith_pkg::*;
 import qrem_mem_map_pkg::*;
 
 module poly_arith_unit #(
-    parameter int NUM_POLYS = 32,
+    parameter int NUM_POLYS = qrem_global_pkg::NUM_POLYS,
     // Default to the largest ML-KEM row length supported by the current
     // memory map. Higher-level integration should override this to the active
     // parameter-set k:
