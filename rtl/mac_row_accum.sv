@@ -47,7 +47,7 @@ module mac_row_accum #(
     parameter int NUM_PAIRS = 128
 )(
     input  logic        clk,
-    input  logic        rst_n,
+    input  logic        rst,
 
     // ------------------------------------------------------------
     // Accumulate interface
@@ -85,6 +85,8 @@ module mac_row_accum #(
     coeff_t acc1_old;
     coeff_t acc0_sum;
     coeff_t acc1_sum;
+    coeff_t acc0_wr_data;
+    coeff_t acc1_wr_data;
 
     coeff_t drain0_raw;
     coeff_t drain1_raw;
@@ -96,15 +98,37 @@ module mac_row_accum #(
     coeff_t drain1_n;
     logic [6:0] drain_pair_idx_n;
 
+    // Keep a copy of the most recent scratch write so repeated hits on the
+    // same pair index are deterministic even if the inferred memory has
+    // ambiguous read-during-write behavior.
+    logic       last_wr_valid_q;
+    logic [6:0] last_wr_pair_idx_q;
+    coeff_t     last_wr_acc0_q;
+    coeff_t     last_wr_acc1_q;
+    logic       acc_rd_bypass_hit;
+    logic       drain_rd_bypass_hit;
+
+    // first_term_i is a 1-cycle "start new CWM row" pulse, not a level that
+    // stays high for the whole first source-term sweep. Keep an internal init
+    // window active until the first sweep has written every pair slot once.
+    logic       init_active_q;
+    logic       init_active_n;
+    logic       seed_mode;
+
     integer p;
 
     // ------------------------------------------------------------
     // Scratch reads
     // ------------------------------------------------------------
-    assign acc0_old   = acc0_mem[pair_idx_i];
-    assign acc1_old   = acc1_mem[pair_idx_i];
-    assign drain0_raw = acc0_mem[drain_idx_i];
-    assign drain1_raw = acc1_mem[drain_idx_i];
+    // Write-through bypass guarantees that acc*_old sees the running partial
+    // sum for back-to-back accesses to the same pair index.
+    assign acc_rd_bypass_hit   = last_wr_valid_q && (last_wr_pair_idx_q == pair_idx_i);
+    assign drain_rd_bypass_hit = last_wr_valid_q && (last_wr_pair_idx_q == drain_idx_i);
+
+    assign acc0_old   = acc_rd_bypass_hit   ? last_wr_acc0_q : acc0_mem[pair_idx_i];
+    assign acc1_old   = acc_rd_bypass_hit   ? last_wr_acc1_q : acc1_mem[pair_idx_i];
+    assign drain0_raw = drain_rd_bypass_hit ? last_wr_acc0_q : acc0_mem[drain_idx_i];
+    assign drain1_raw = drain_rd_bypass_hit ? last_wr_acc1_q : acc1_mem[drain_idx_i];
 
     // ------------------------------------------------------------
     // Accumulate datapath
@@ -131,24 +155,39 @@ module mac_row_accum #(
         .result_o (drain1_fused)
     );
 
+    // first_term_i is the single-cycle start pulse. Once it arrives, seed the
+    // whole first 128-pair sweep by overwriting each slot until pair 127 has
+    // been written, then switch back to normal accumulation for later terms.
+    assign init_active_n = first_term_i ? 1'b1 :
+                           ((acc_fire_i && init_active_q && (pair_idx_i == NUM_PAIRS-1)) ? 1'b0 : init_active_q);
+    assign seed_mode     = first_term_i || init_active_q;
+    assign acc0_wr_data  = seed_mode ? cwm0_i : acc0_sum;
+    assign acc1_wr_data  = seed_mode ? cwm1_i : acc1_sum;
+
     // ------------------------------------------------------------
     // Scratch update
     // ------------------------------------------------------------
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+    always_ff @(posedge clk) begin
+        if (rst) begin
             for (p = 0; p < NUM_PAIRS; p++) begin
                 acc0_mem[p] <= '0;
                 acc1_mem[p] <= '0;
             end
-        end else if (acc_fire_i) begin
-            // first_term_i means "seed this pair with the first CWM result"
-            // rather than adding to a previous partial sum.
-            if (first_term_i) begin
-                acc0_mem[pair_idx_i] <= cwm0_i;
-                acc1_mem[pair_idx_i] <= cwm1_i;
-            end else begin
-                acc0_mem[pair_idx_i] <= acc0_sum;
-                acc1_mem[pair_idx_i] <= acc1_sum;
+            last_wr_valid_q    <= 1'b0;
+            last_wr_pair_idx_q <= '0;
+            last_wr_acc0_q     <= '0;
+            last_wr_acc1_q     <= '0;
+            init_active_q      <= 1'b0;
+        end else begin
+            last_wr_valid_q <= acc_fire_i;
+            init_active_q   <= init_active_n;
+
+            if (acc_fire_i) begin
+                acc0_mem[pair_idx_i] <= acc0_wr_data;
+                acc1_mem[pair_idx_i] <= acc1_wr_data;
+                last_wr_pair_idx_q   <= pair_idx_i;
+                last_wr_acc0_q       <= acc0_wr_data;
+                last_wr_acc1_q       <= acc1_wr_data;
             end
         end
     end
@@ -178,8 +217,8 @@ module mac_row_accum #(
         end
     end
 
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+    always_ff @(posedge clk) begin
+        if (rst) begin
             drain_valid_o    <= 1'b0;
             drain_pair_idx_o <= '0;
             drain0_o         <= '0;

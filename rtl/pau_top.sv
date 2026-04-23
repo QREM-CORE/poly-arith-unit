@@ -30,9 +30,19 @@
  */
 
 import poly_arith_pkg::*;
+import qrem_mem_map_pkg::*;
 
 module pau_top #(
-    parameter int NUM_POLYS = 32
+    parameter int NUM_POLYS = 32,
+    // Default to the largest ML-KEM row length supported by the current
+    // memory map. Higher-level integration should override this to the active
+    // parameter-set k:
+    //   k=2 -> ML-KEM-512, k=3 -> ML-KEM-768, k=4 -> ML-KEM-1024.
+    //
+    // If this stays at 1, CWM performs only the initial 128-pair sweep, so it
+    // never revisits the same pair_idx on a later source term and acc_old
+    // remains zero for the whole row.
+    parameter int CWM_NUM_TERMS = QREM_MAX_K
 )(
     input  logic       clk,
     input  logic       rst,
@@ -214,7 +224,8 @@ module pau_top #(
 
     // ---- Controller ----
     pau_controller #(
-        .NUM_POLYS(NUM_POLYS)
+        .NUM_POLYS(NUM_POLYS),
+        .CWM_NUM_TERMS(CWM_NUM_TERMS)
     ) u_controller (
         .clk                (clk),
         .rst                (rst),
@@ -428,7 +439,7 @@ module pau_top #(
     // the e_hat pair being fused into the final t_hat writeback.
     mac_row_accum u_row_accum (
         .clk            (clk),
-        .rst_n          (~rst),
+        .rst            (rst),
         .acc_fire_i     (cwm_valid_aligned),
         .first_term_i   (cwm_first_term_aligned),
         .pair_idx_i     (cwm_pair_idx_aligned),
