@@ -276,6 +276,8 @@ module pau_top #(
         .cwm_mode_i             (is_cwm),
         .cwm_issue_i            (mac_issue),
         .cwm_drain_issue_i      (mac_drain_issue),
+        .pass_idx_i             (pass_idx),
+        .is_radix2_i            (is_radix2_pe),
         .wr_en_i                (pe_wb_en),
         .wr_data_i              (pe_wb_data),
         .coeff_o                (coeff_from_cmi),

@@ -162,6 +162,7 @@ module pau_controller #(
     logic [5:0]    blocks_max;
     logic [5:0]    bfs_max;
     logic [3:0]    pipe_lat;
+    logic [3:0]    wb_lat;
     logic          pass_uses_tf;
     logic          last_pass;
 
@@ -217,6 +218,7 @@ module pau_controller #(
         blocks_max     = ZERO6;
         bfs_max        = ZERO6;
         pipe_lat       = PIPE_LAT_ADD_SUB;
+        wb_lat         = 4'd2;
         pass_uses_tf   = 1'b0;
         last_pass      = 1'b1;
 
@@ -224,6 +226,7 @@ module pau_controller #(
 
             PE_MODE_NTT: begin
                 pipe_lat     = PIPE_LAT_NTT_INTT;
+                wb_lat       = (pass_idx_r == PASS_3) ? 4'd5 : 4'd9;
                 pass_uses_tf = 1'b1;
                 last_pass    = (pass_idx_r == PASS_3);
 
@@ -258,6 +261,7 @@ module pau_controller #(
 
             PE_MODE_INTT: begin
                 pipe_lat     = PIPE_LAT_NTT_INTT;
+                wb_lat       = (pass_idx_r == PASS_0) ? 4'd5 : 4'd9;
                 pass_uses_tf = 1'b1;
                 last_pass    = (pass_idx_r == PASS_3);
 
@@ -295,6 +299,7 @@ module pau_controller #(
                 blocks_max     = COUNT_64;
                 bfs_max        = COUNT_1;
                 pipe_lat       = PIPE_LAT_NTT_INTT;
+                wb_lat         = 4'd9;
                 pass_uses_tf   = 1'b1;
                 last_pass      = 1'b1;
             end
@@ -305,6 +310,7 @@ module pau_controller #(
                 blocks_max     = COUNT_64;
                 bfs_max        = COUNT_1;
                 pipe_lat       = PIPE_LAT_COMP;
+                wb_lat         = 4'd4;
                 pass_uses_tf   = 1'b0;
                 last_pass      = 1'b1;
             end
@@ -314,6 +320,7 @@ module pau_controller #(
                 blocks_max     = COUNT_64;
                 bfs_max        = COUNT_1;
                 pipe_lat       = PIPE_LAT_ADD_SUB;
+                wb_lat         = 4'd2;
                 pass_uses_tf   = 1'b0;
                 last_pass      = 1'b1;
             end
@@ -323,6 +330,7 @@ module pau_controller #(
                 blocks_max     = ZERO6;
                 bfs_max        = ZERO6;
                 pipe_lat       = PIPE_LAT_ADD_SUB;
+                wb_lat         = 4'd2;
                 pass_uses_tf   = 1'b0;
                 last_pass      = 1'b1;
             end
@@ -578,7 +586,11 @@ module pau_controller #(
 
                             if (block_last) begin
                                 block_cnt_n = ZERO6;
-                                drain_cnt_n = pipe_lat;
+                                // The next pass reads from memory, so the pass
+                                // boundary must wait for the final accepted
+                                // read beat's writeback address/data alignment,
+                                // not just the arithmetic pipe depth.
+                                drain_cnt_n = wb_lat;
                                 state_n     = S_DRAIN;
                             end else begin
                                 block_cnt_n = block_cnt_r + 6'd1;
@@ -736,13 +748,7 @@ module pau_controller #(
     //   RUN   : no PE writeback is expected yet, so the value is unused.
     //   DRAIN : read e_hat (1cc) -> fuse/output register in mac_row_accum (1cc)
     //           -> writeback, therefore 2cc from read issue to wr_en.
-    assign cmi_wb_latency_o   = ((op_r == PE_MODE_NTT) || (op_r == PE_MODE_INTT)) ?
-                                 (pass_is_radix2 ? 4'd6 : 4'd10) :
-                                 ((op_r == PE_MODE_CWM) && (state_r == S_DRAIN)) ? 4'd2 :
-                                 (op_r == PE_MODE_CWM)    ? 4'd9 :
-                                 (op_r == PE_MODE_COMP)   ? 4'd4 :
-                                 (op_r == PE_MODE_DECOMP) ? 4'd4 :
-                                 (op_r == PE_MODE_ADDSUB) ? 4'd2 : 4'd2;
+    assign cmi_wb_latency_o   = ((op_r == PE_MODE_CWM) && (state_r == S_DRAIN)) ? 4'd2 : wb_lat;
 
     // Expose the row-accumulator control plane so pau_top can delay/align it
     // to the real CWM datapath latency.

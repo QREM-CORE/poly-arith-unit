@@ -66,6 +66,8 @@ module cmi #(
     input  logic                          cwm_mode_i,
     input  logic                          cwm_issue_i,
     input  logic                          cwm_drain_issue_i,
+    input  logic [1:0]                    pass_idx_i,
+    input  logic                          is_radix2_i,
 
     // ------------------------------------------------------------
     // From AU writeback path
@@ -131,21 +133,31 @@ module cmi #(
     logic [POLY_W-1:0] primary_rd_poly_id_sel;
     logic [POLY_W-1:0] primary_wr_poly_id_sel;
     logic [POLY_W-1:0] aux_rd_poly_id_sel;
-    logic              cwm_issue_d1_r;
+    logic              primary_rd_accept;
+    logic              aux_rd_accept;
+    logic              primary_rd_pending_r;
+    logic              aux_rd_pending_r;
+    logic [POLY_W-1:0] primary_req_poly_id_r;
+    logic [POLY_W-1:0] aux_req_poly_id_r;
+    logic [3:0][$clog2(N)-1:0] primary_req_idx_r;
+    logic [3:0][$clog2(N)-1:0] aux_req_idx_r;
+    logic [3:0]                primary_req_valid_r;
+    logic [3:0]                aux_req_valid_r;
+    logic [3:0][W-1:0]         primary_coeff_reordered;
+    logic [1:0][W-1:0]         aux_coeff_reordered;
+    logic [3:0]                primary_req_match;
+    logic [3:0]                primary_rsp_match;
+    logic [1:0]                aux_req_match;
+    logic [3:0]                aux_rsp_match;
 
     logic [3:0][$clog2(N)-1:0] wr_idx_pipe   [0:MAX_WB_LAT];
     logic [3:0]                valid_pipe    [0:MAX_WB_LAT];
     logic [3:0][$clog2(N)-1:0] wr_idx_sel;
     logic [3:0]                coeff_valid_sel;
+    logic [3:0][$clog2(N)-1:0] wb_idx_head;
+    logic [3:0]                wb_valid_head;
 
     assign cwm_slot_sel = {{(POLY_W-2){1'b0}}, poly_id_i[1:0]};
-
-    always_ff @(posedge clk) begin
-        if (rst)
-            cwm_issue_d1_r <= 1'b0;
-        else
-            cwm_issue_d1_r <= cwm_issue_i;
-    end
 
     always_comb begin
         primary_rd_poly_id_sel = poly_id_i;
@@ -184,24 +196,193 @@ module cmi #(
     assign pau_aux_wr_idx_o        = '0;
     assign pau_aux_wr_data_o       = '0;
 
+    assign primary_rd_accept = pau_req_o &&
+                               pau_rd_en_o &&
+                               (|pau_rd_lane_valid_o) &&
+                               !pau_stall_i;
+    assign aux_rd_accept     = pau_aux_req_o &&
+                               pau_aux_rd_en_o &&
+                               (|pau_aux_rd_lane_valid_o) &&
+                               !pau_stall_i;
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            primary_rd_pending_r <= 1'b0;
+            aux_rd_pending_r     <= 1'b0;
+            primary_req_poly_id_r <= '0;
+            aux_req_poly_id_r     <= '0;
+            primary_req_idx_r     <= '0;
+            aux_req_idx_r         <= '0;
+            primary_req_valid_r   <= '0;
+            aux_req_valid_r       <= '0;
+        end else begin
+            primary_rd_pending_r <= primary_rd_accept;
+            aux_rd_pending_r     <= aux_rd_accept;
+
+            if (primary_rd_accept) begin
+                primary_req_poly_id_r <= pau_rd_poly_id_o;
+                primary_req_idx_r     <= pau_rd_idx_o;
+                primary_req_valid_r   <= pau_rd_lane_valid_o;
+            end
+
+            if (aux_rd_accept) begin
+                aux_req_poly_id_r <= pau_aux_rd_poly_id_o;
+                aux_req_idx_r     <= pau_aux_rd_idx_o;
+                aux_req_valid_r   <= pau_aux_rd_lane_valid_o;
+            end
+        end
+    end
+
     // ============================================================
     // READ RESPONSE PATH
     // ============================================================
     always_comb begin
         coeff_o = '0;
+        primary_coeff_reordered = '0;
+        aux_coeff_reordered     = '0;
+        primary_req_match       = '0;
+        primary_rsp_match       = '0;
+        aux_req_match           = '0;
+        aux_rsp_match           = '0;
 
-        if (cwm_issue_d1_r) begin
-            for (int i = 0; i < 2; i++) begin
-                if (pau_rd_valid_i && pau_rd_lane_valid_i[i])
-                    coeff_o[i] = pau_rd_data_i[i];
-                if (pau_aux_rd_valid_i && pau_aux_rd_lane_valid_i[i])
-                    coeff_o[i+2] = pau_aux_rd_data_i[i];
+        if (pau_rd_valid_i && primary_rd_pending_r) begin
+            for (int dst = 0; dst < 4; dst++) begin
+                if (primary_req_valid_r[dst]) begin
+                    for (int src = 0; src < 4; src++) begin
+                        if (pau_rd_lane_valid_i[src] &&
+                            (pau_rd_idx_i[src] == primary_req_idx_r[dst])) begin
+                            primary_coeff_reordered[dst] = pau_rd_data_i[src];
+                            primary_req_match[dst]       = 1'b1;
+                            primary_rsp_match[src]       = 1'b1;
+                        end
+                    end
+                end
             end
-        end else if (pau_rd_valid_i) begin
-            for (int i = 0; i < 4; i++) begin
-                if (pau_rd_lane_valid_i[i])
-                    coeff_o[i] = pau_rd_data_i[i];
+
+            for (int dst = 0; dst < 4; dst++) begin
+                if (primary_req_match[dst])
+                    coeff_o[dst] = primary_coeff_reordered[dst];
             end
+        end
+
+        if (pau_aux_rd_valid_i && aux_rd_pending_r) begin
+            for (int dst = 0; dst < 2; dst++) begin
+                if (aux_req_valid_r[dst]) begin
+                    for (int src = 0; src < 4; src++) begin
+                        if (pau_aux_rd_lane_valid_i[src] &&
+                            (pau_aux_rd_idx_i[src] == aux_req_idx_r[dst])) begin
+                            aux_coeff_reordered[dst] = pau_aux_rd_data_i[src];
+                            aux_req_match[dst]       = 1'b1;
+                            aux_rsp_match[src]       = 1'b1;
+                        end
+                    end
+                end
+            end
+
+            for (int dst = 0; dst < 2; dst++) begin
+                if (aux_req_match[dst])
+                    coeff_o[dst+2] = aux_coeff_reordered[dst];
+            end
+        end
+    end
+
+`ifndef SYNTHESIS
+    always_ff @(posedge clk) begin
+        if (!rst) begin
+            if (aux_rd_accept && (|pau_aux_rd_lane_valid_o[3:2])) begin
+                $error("CMI aux read currently expects only request lanes 0/1 to be active, got lane_valid=%b",
+                       pau_aux_rd_lane_valid_o);
+            end
+
+            if (pau_rd_valid_i) begin
+                if (!primary_rd_pending_r) begin
+                    $error("CMI received a primary read response without a stored accepted request");
+                end else begin
+                    if (pau_rd_poly_id_i !== primary_req_poly_id_r) begin
+                        $error("CMI primary poly_id mismatch: req=%0d rsp=%0d",
+                               primary_req_poly_id_r, pau_rd_poly_id_i);
+                    end
+
+                    for (int dst = 0; dst < 4; dst++) begin
+                        if (primary_req_valid_r[dst] && !primary_req_match[dst]) begin
+                            $error("CMI primary lane %0d missing match for requested idx=%0d", dst,
+                                   primary_req_idx_r[dst]);
+                        end
+                    end
+
+                    for (int src = 0; src < 4; src++) begin
+                        if (pau_rd_lane_valid_i[src] && !primary_rsp_match[src]) begin
+                            $error("CMI primary response lane %0d idx=%0d did not match any requested idx",
+                                   src, pau_rd_idx_i[src]);
+                        end
+                    end
+
+                    if (is_radix2_i || (pass_idx_i == 2'd1) || (pass_idx_i == 2'd2)) begin
+                        $display("CMI primary resp pass=%0d radix2=%0b req_idx={%0d,%0d,%0d,%0d} ret_idx={%0d,%0d,%0d,%0d} coeff_o={%0h,%0h,%0h,%0h}",
+                                 pass_idx_i, is_radix2_i,
+                                 primary_req_idx_r[0], primary_req_idx_r[1],
+                                 primary_req_idx_r[2], primary_req_idx_r[3],
+                                 pau_rd_idx_i[0], pau_rd_idx_i[1],
+                                 pau_rd_idx_i[2], pau_rd_idx_i[3],
+                                 coeff_o[0], coeff_o[1], coeff_o[2], coeff_o[3]);
+                    end
+                end
+            end
+
+            if (pau_aux_rd_valid_i) begin
+                if (!aux_rd_pending_r) begin
+                    $error("CMI received an auxiliary read response without a stored accepted request");
+                end else begin
+                    if (pau_aux_rd_poly_id_i !== aux_req_poly_id_r) begin
+                        $error("CMI auxiliary poly_id mismatch: req=%0d rsp=%0d",
+                               aux_req_poly_id_r, pau_aux_rd_poly_id_i);
+                    end
+
+                    for (int dst = 0; dst < 2; dst++) begin
+                        if (aux_req_valid_r[dst] && !aux_req_match[dst]) begin
+                            $error("CMI auxiliary lane %0d missing match for requested idx=%0d", dst,
+                                   aux_req_idx_r[dst]);
+                        end
+                    end
+
+                    for (int src = 0; src < 4; src++) begin
+                        if (pau_aux_rd_lane_valid_i[src] && !aux_rsp_match[src]) begin
+                            $error("CMI auxiliary response lane %0d idx=%0d did not match any requested idx",
+                                   src, pau_aux_rd_idx_i[src]);
+                        end
+                    end
+
+                    if ((pass_idx_i == 2'd1) || (pass_idx_i == 2'd2)) begin
+                        $display("CMI aux resp pass=%0d radix2=%0b req_idx={%0d,%0d} ret_idx={%0d,%0d,%0d,%0d} coeff_o={%0h,%0h,%0h,%0h}",
+                                 pass_idx_i, is_radix2_i,
+                                 aux_req_idx_r[0], aux_req_idx_r[1],
+                                 pau_aux_rd_idx_i[0], pau_aux_rd_idx_i[1],
+                                 pau_aux_rd_idx_i[2], pau_aux_rd_idx_i[3],
+                                 coeff_o[0], coeff_o[1], coeff_o[2], coeff_o[3]);
+                    end
+                end
+            end
+        end
+    end
+`endif
+
+    // INTT pass 0 reads Memory in the interleaved order {0,2,1,3} so PE0/PE2
+    // consume the two radix-2 butterflies in parallel. The writeback side must
+    // restore natural coefficient order {0,1,2,3}; later passes keep the
+    // request order.
+    always_comb begin
+        wb_idx_head   = coeff_idx_i;
+        wb_valid_head = coeff_valid_i;
+
+        if (is_radix2_i && (pass_idx_i == 2'd0)) begin
+            wb_idx_head[0]   = coeff_idx_i[0];
+            wb_idx_head[1]   = coeff_idx_i[2];
+            wb_idx_head[2]   = coeff_idx_i[1];
+            wb_idx_head[3]   = coeff_idx_i[3];
+            wb_valid_head[0] = coeff_valid_i[0];
+            wb_valid_head[1] = coeff_valid_i[2];
+            wb_valid_head[2] = coeff_valid_i[1];
+            wb_valid_head[3] = coeff_valid_i[3];
         end
     end
 
@@ -210,8 +391,8 @@ module cmi #(
     // ============================================================
     generate
         for (genvar i0 = 0; i0 < 4; i0++) begin : G_WB_PIPE_HEAD
-            assign wr_idx_pipe[0][i0] = coeff_idx_i[i0];
-            assign valid_pipe[0][i0]  = coeff_valid_i[i0];
+            assign wr_idx_pipe[0][i0] = wb_idx_head[i0];
+            assign valid_pipe[0][i0]  = wb_valid_head[i0];
         end
     endgenerate
 
@@ -224,7 +405,7 @@ module cmi #(
                 ) u_idx_delay (
                     .clk    (clk),
                     .rst    (rst),
-                    .data_i (coeff_idx_i[i]),
+                    .data_i (wb_idx_head[i]),
                     .data_o (wr_idx_pipe[d+1][i])
                 );
 
@@ -234,7 +415,7 @@ module cmi #(
                 ) u_valid_delay (
                     .clk    (clk),
                     .rst    (rst),
-                    .data_i (coeff_valid_i[i]),
+                    .data_i (wb_valid_head[i]),
                     .data_o (valid_pipe[d+1][i])
                 );
             end
