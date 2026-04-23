@@ -113,6 +113,7 @@ module pau_top #(
     logic            ctl_ready;
     logic            ctl_done;
     logic            tf_start;
+    logic            tf_step;
     logic [1:0]      pass_idx;
     logic            pe_valid;
     pe_mode_e        pe_ctrl;
@@ -161,7 +162,7 @@ module pau_top #(
 
     // Address Generator & Twiddle Factor Signals
     logic [5:0]      tf_addr;
-    logic            is_radix2;
+    logic            is_radix2_tf;
     logic            is_radix2_pe;
     logic [1:0]      pass_out;
     logic            is_intt;
@@ -243,6 +244,8 @@ module pau_top #(
         .ready_o            (ctl_ready),
         .done_o             (ctl_done),
         .tf_start_o         (tf_start),
+        .tf_step_o          (tf_step),
+        .pass_is_radix2_o   (is_radix2_pe),
         .pass_idx_o         (pass_idx),
         .pe_ctrl_o          (pe_ctrl),
         .pe_valid_o         (pe_valid),
@@ -306,10 +309,11 @@ module pau_top #(
         .clk                (clk),
         .rst                (rst),
         .start_i            (tf_start),
+        .advance_i          (tf_step),
         .ctrl_i             (op_type_i),
         .pass_idx_i         (pass_idx),
         .tf_addr_o          (tf_addr),
-        .is_radix2_o        (is_radix2),
+        .is_radix2_o        (is_radix2_tf),
         .valid_o            (),
         .pass_o             (pass_out)
     );
@@ -319,7 +323,7 @@ module pau_top #(
         .clk                (clk),
         .rst                (rst),
         .is_intt_i          (is_intt),
-        .is_radix2_i        (is_radix2),
+        .is_radix2_i        (is_radix2_tf),
         .is_cwm_i           (is_cwm),
         .tf_addr_i          (tf_addr),
         .w0_o               (w0),
@@ -327,16 +331,6 @@ module pau_top #(
         .w2_o               (w2),
         .w3_o               (w3)
     );
-
-    // Align the radix selector with the delayed controller/data path that
-    // drives pe_unit on the cycle after the memory read request is issued.
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            is_radix2_pe <= 1'b0;
-        end else begin
-            is_radix2_pe <= is_radix2;
-        end
-    end
 
     // ==========================================================
     // CWM alignment helpers for the new scratch-backed row MAC

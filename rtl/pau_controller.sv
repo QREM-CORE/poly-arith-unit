@@ -49,6 +49,8 @@ module pau_controller #(
 
     // ---- Twiddle / pass control ----
     output logic             tf_start_o,
+    output logic             tf_step_o,
+    output logic             pass_is_radix2_o,
     output logic [1:0]       pass_idx_o,
 
     // ---- Interface to AU / PE array ----
@@ -666,7 +668,12 @@ module pau_controller #(
     assign pe_ctrl_o          = pe_ctrl_d1_r;
     assign pe_valid_o         = pe_valid_d1_r;
 
+    // Keep the PE radix mode alive for the full controller-owned pass lifetime,
+    // including the drain window after the final issue beat.
     assign tf_start_o         = (state_r == S_SETUP) && pass_uses_tf;
+    assign tf_step_o          = issue_fire && pass_uses_tf;
+    assign pass_is_radix2_o   = pass_is_radix2 &&
+                                ((state_r == S_RUN) || (state_r == S_DRAIN));
     assign pass_idx_o         = pass_idx_r;
 
     // NOTE(PAU/Mem): A single poly_id is still used for both primary reads and
