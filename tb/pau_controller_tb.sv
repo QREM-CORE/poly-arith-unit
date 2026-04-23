@@ -4,8 +4,10 @@ import poly_arith_pkg::*;
 
 module pau_controller_tb;
 
-    localparam int NUM_POLYS = 32;
-    localparam int POLY_W    = $clog2(NUM_POLYS);
+    localparam int NUM_POLYS          = 32;
+    localparam int POLY_W             = $clog2(NUM_POLYS);
+    localparam int CWM_NUM_TERMS      = 3;
+    localparam int CWM_PAIRS_PER_TERM = 128;
 
     logic       clk;
     logic       rst;
@@ -43,7 +45,8 @@ module pau_controller_tb;
     integer fail_count = 0;
 
     pau_controller #(
-        .NUM_POLYS(NUM_POLYS)
+        .NUM_POLYS(NUM_POLYS),
+        .CWM_NUM_TERMS(CWM_NUM_TERMS)
     ) dut (
         .clk(clk),
         .rst(rst),
@@ -215,34 +218,74 @@ module pau_controller_tb;
 
     task automatic test_cwm_marker;
         integer cycle_idx;
+        integer accum_issue_count;
+        integer accum_term_idx;
+        integer accum_pair_idx;
+        logic [6:0] expected_pair;
+        logic [POLY_W-1:0] expected_term_slot;
         logic saw_accum_issue;
         logic saw_drain_issue;
         logic saw_done;
         begin
-            $display("\n=== TEST 5: CWM PRIMARY-ONLY MARKER ===");
+            $display("\n=== TEST 5: CWM MULTI-TERM CONTROL ===");
             reset_dut();
 
-            saw_accum_issue = 1'b0;
-            saw_drain_issue = 1'b0;
-            saw_done        = 1'b0;
+            saw_accum_issue   = 1'b0;
+            saw_drain_issue   = 1'b0;
+            saw_done          = 1'b0;
+            accum_issue_count = 0;
             start_op(PE_MODE_CWM);
 
-            for (cycle_idx = 0; cycle_idx < 400; cycle_idx++) begin
+            for (cycle_idx = 0; cycle_idx < 900; cycle_idx++) begin
                 @(posedge clk);
                 #1;
+
                 if (mac_issue_o && cmi_v_o && cmi_rd_en_o &&
-                    cmi_coeff_valid_o == 4'b0011)
-                    saw_accum_issue = 1'b1;
+                    cmi_coeff_valid_o == 4'b0011) begin
+                    saw_accum_issue    = 1'b1;
+                    accum_term_idx     = accum_issue_count / CWM_PAIRS_PER_TERM;
+                    accum_pair_idx     = accum_issue_count % CWM_PAIRS_PER_TERM;
+                    expected_pair      = 7'(accum_pair_idx);
+                    expected_term_slot = POLY_W'(accum_term_idx);
+
+                    if ((accum_term_idx < 3) &&
+                        ((accum_pair_idx < 2) || (accum_pair_idx == (CWM_PAIRS_PER_TERM-1)))) begin
+                        $display("[DBG %0t] CWM term=%0d pair=%0d first_term=%0b poly_sel=%0d issue=%0b",
+                                 $time, accum_term_idx, mac_pair_idx_o, mac_first_term_o,
+                                 cmi_poly_id_o, mac_issue_o);
+                    end
+
+                    if (mac_pair_idx_o !== expected_pair) begin
+                        $display("[%0t] FAIL: CWM pair index mismatch exp=%0d got=%0d",
+                                 $time, expected_pair, mac_pair_idx_o);
+                        fail_count++;
+                    end
+                    if (mac_first_term_o !== (accum_issue_count == 0)) begin
+                        $display("[%0t] FAIL: CWM first_term mismatch issue=%0d term=%0d got=%0b",
+                                 $time, accum_issue_count, accum_term_idx, mac_first_term_o);
+                        fail_count++;
+                    end
+                    if (cmi_poly_id_o !== expected_term_slot) begin
+                        $display("[%0t] FAIL: CWM term slot mismatch exp=%0d got=%0d",
+                                 $time, expected_term_slot, cmi_poly_id_o);
+                        fail_count++;
+                    end
+
+                    accum_issue_count++;
+                end
+
                 if (mac_drain_issue_o && mac_fuse_e_o && cmi_v_o &&
                     cmi_rd_en_o && cmi_coeff_valid_o == 4'b0011)
                     saw_drain_issue = 1'b1;
                 if (done_o) begin
                     saw_done = 1'b1;
-                    cycle_idx = 400;
+                    cycle_idx = 900;
                 end
             end
 
             check(saw_accum_issue, "CWM accumulation issues lane-0/1 primary reads");
+            check(accum_issue_count == (CWM_NUM_TERMS * CWM_PAIRS_PER_TERM),
+                  "CWM issues one full pair sweep per term before drain");
             check(saw_drain_issue, "CWM drain issues lane-0/1 primary reads");
             check(saw_done, "CWM completed before timeout");
             @(posedge clk);

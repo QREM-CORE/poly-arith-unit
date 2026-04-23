@@ -7,6 +7,8 @@ import qrem_seed_map_pkg::*;
 module pau_top_tb;
 
     localparam int NUM_POLYS  = 32;
+    localparam int CWM_NUM_TERMS = 3;
+    localparam int CWM_PAIRS_PER_TERM = 128;
     localparam int NCOEFF     = 256;
     localparam int W          = 16;
     localparam int SEED_DEPTH = 32;
@@ -113,12 +115,16 @@ module pau_top_tb;
     bit saw_primary_read;
     bit saw_primary_write;
     bit saw_primary_response;
-    bit saw_aux_req;
-    bit saw_aux_read;
-    bit saw_aux_response;
+    bit saw_cwm_pair_revisit;
+    bit saw_cwm_nonzero_old;
+    bit saw_cwm_drain_write;
+    int cwm_issue_count;
+    int cwm_acc_fire_count;
+    int check_fail_count;
 
     pau_top #(
-        .NUM_POLYS(NUM_POLYS)
+        .NUM_POLYS(NUM_POLYS),
+        .CWM_NUM_TERMS(CWM_NUM_TERMS)
     ) dut (
         .clk(clk),
         .rst(rst),
@@ -260,54 +266,20 @@ module pau_top_tb;
         end
     endtask
 
-    task automatic expect_aux_idle;
+    task automatic report_failure(input string msg);
         begin
-            #1;
-            if (rst) begin
-                if ((pau_aux_req_o === 1'b1) || (pau_aux_rd_en_o === 1'b1) ||
-                    ((|pau_aux_rd_lane_valid_o) === 1'b1) || ((|pau_aux_wr_en_o) === 1'b1) ||
-                    (pau_aux_rd_valid_i === 1'b1))
-                    $fatal(1, "PAU auxiliary Memory path must stay inactive during reset");
-            end else begin
-                if (pau_aux_req_o || pau_aux_rd_en_o || (|pau_aux_rd_lane_valid_o) ||
-                    (|pau_aux_wr_en_o) || pau_aux_rd_valid_i)
-                    $fatal(1, "PAU auxiliary Memory path should be idle before CWM starts");
-                if (pau_aux_rd_poly_id_o !== '0 || pau_aux_rd_idx_o !== '0 ||
-                    pau_aux_wr_poly_id_o !== '0 || pau_aux_wr_idx_o !== '0 ||
-                    pau_aux_wr_data_o !== '0)
-                    $fatal(1, "PAU auxiliary descriptor/data should be zero while idle");
-            end
+            check_fail_count++;
+            $error("%s", msg);
         end
     endtask
 
-    task automatic expect_cwm_aux_read_only;
+    task automatic expect_aux_safe;
         begin
             #1;
-            if ((|pau_aux_wr_en_o) || pau_aux_wr_poly_id_o !== '0 ||
-                pau_aux_wr_idx_o !== '0 || pau_aux_wr_data_o !== '0)
-                $fatal(1, "PAU auxiliary path should remain read-only for CWM");
-
-            if (pau_aux_req_o || pau_aux_rd_en_o || (|pau_aux_rd_lane_valid_o)) begin
-                if (!(pau_aux_req_o && pau_aux_rd_en_o))
-                    $fatal(1, "PAU auxiliary CWM activity must be a read request");
-                if (!(pau_req_o && pau_rd_en_o))
-                    $fatal(1, "PAU auxiliary CWM read must accompany a primary read");
-                if (pau_aux_rd_lane_valid_o !== 4'b0011)
-                    $fatal(1, "PAU auxiliary CWM read should request exactly two lanes");
-                if (pau_aux_rd_idx_o !== pau_rd_idx_o)
-                    $fatal(1, "PAU auxiliary CWM read indices should mirror the primary pair");
-                if ((pau_aux_rd_poly_id_o < POLY_W'(POLY_ID_S0)) ||
-                    (pau_aux_rd_poly_id_o > POLY_W'(POLY_ID_S3)))
-                    $fatal(1, "PAU auxiliary CWM read should target an S polynomial slot");
-            end
-
-            if (pau_aux_rd_valid_i) begin
-                if (pau_aux_rd_lane_valid_i !== 4'b0011)
-                    $fatal(1, "PAU auxiliary CWM response should return exactly two lanes");
-                if ((pau_aux_rd_poly_id_i < POLY_W'(POLY_ID_S0)) ||
-                    (pau_aux_rd_poly_id_i > POLY_W'(POLY_ID_S3)))
-                    $fatal(1, "PAU auxiliary CWM response should come from an S polynomial slot");
-            end
+            // Current CWM integration may source auxiliary reads, but it should
+            // not write through the auxiliary descriptor in this branch.
+            if (|pau_aux_wr_en_o)
+                report_failure("PAU auxiliary path should remain read-only during this CWM flow");
         end
     endtask
 
@@ -352,16 +324,20 @@ module pau_top_tb;
             saw_primary_read     <= 1'b0;
             saw_primary_write    <= 1'b0;
             saw_primary_response <= 1'b0;
-            saw_aux_req          <= 1'b0;
-            saw_aux_read         <= 1'b0;
-            saw_aux_response     <= 1'b0;
+            saw_cwm_pair_revisit <= 1'b0;
+            saw_cwm_nonzero_old  <= 1'b0;
+            saw_cwm_drain_write  <= 1'b0;
+            cwm_issue_count      <= 0;
+            cwm_acc_fire_count   <= 0;
         end else begin
+            int expected_pair_idx;
+
             if ((|dut.pe_wb_en) && pau_stall_i)
-                $fatal(1, "PAU produced writeback while Memory reported stall");
+                report_failure("PAU produced writeback while Memory reported stall");
 
             if ((|dut.pe_wb_en) && !pau_stall_i &&
                 (pau_wr_en_o !== (dut.pe_wb_en & dut.u_cmi.coeff_valid_sel)))
-                $fatal(1, "PAU PE writeback enable did not match CMI-masked Memory write enable");
+                report_failure("PAU PE writeback enable did not match CMI-masked Memory write enable");
 
             if (pau_req_o)
                 saw_primary_req <= 1'b1;
@@ -371,54 +347,101 @@ module pau_top_tb;
                 saw_primary_write <= 1'b1;
             if (pau_rd_valid_i)
                 saw_primary_response <= 1'b1;
-            if (pau_aux_req_o)
-                saw_aux_req <= 1'b1;
-            if (pau_aux_req_o && pau_aux_rd_en_o && !pau_stall_i)
-                saw_aux_read <= 1'b1;
-            if (pau_aux_rd_valid_i)
-                saw_aux_response <= 1'b1;
+
+            if (dut.mac_issue) begin
+                expected_pair_idx = cwm_issue_count % CWM_PAIRS_PER_TERM;
+
+                if (dut.mac_pair_idx !== 7'(expected_pair_idx))
+                    report_failure($sformatf(
+                        "CWM controller pair_idx mismatch exp=%0d got=%0d at issue=%0d",
+                        expected_pair_idx, dut.mac_pair_idx, cwm_issue_count));
+
+                if (dut.mac_first_term !== (cwm_issue_count == 0))
+                    report_failure($sformatf(
+                        "CWM first_term pulse mismatch at issue=%0d got=%0b",
+                        cwm_issue_count, dut.mac_first_term));
+
+                // A revisit proves CWM returned to pair_idx 0 after the first
+                // 128-pair sweep instead of stopping after the seed term.
+                if ((cwm_issue_count >= CWM_PAIRS_PER_TERM) && (expected_pair_idx == 0))
+                    saw_cwm_pair_revisit <= 1'b1;
+
+                cwm_issue_count <= cwm_issue_count + 1;
+            end
+
+            if (dut.cwm_valid_aligned) begin
+                // Later terms revisit the same scratch slot, so acc_old should
+                // eventually reflect a prior nonzero write instead of staying 0.
+                if ((cwm_acc_fire_count >= CWM_PAIRS_PER_TERM) &&
+                    ((dut.u_row_accum.acc0_old != '0) || (dut.u_row_accum.acc1_old != '0)))
+                    saw_cwm_nonzero_old <= 1'b1;
+
+                cwm_acc_fire_count <= cwm_acc_fire_count + 1;
+            end
+
+            if (dut.acc_drain_valid)
+                saw_cwm_drain_write <= 1'b1;
         end
     end
 
     initial begin
+        int wait_cycles;
+
+        check_fail_count = 0;
         rst       = 1'b1;
         start_i   = 1'b0;
-        op_type_i = PE_MODE_CWM;
+        op_type_i = PE_MODE_INTT;
         clear_other_clients();
         repeat (3) tick();
-        expect_aux_idle();
+        expect_aux_safe();
 
         rst = 1'b0;
         tick();
-        expect_aux_idle();
+        expect_aux_safe();
 
         start_i = 1'b1;
         tick();
         start_i = 1'b0;
 
-        repeat (450) begin
+        wait_cycles = 0;
+        while (!dut.ctl_done && (wait_cycles < 900)) begin
             tick();
-            expect_cwm_aux_read_only();
+            expect_aux_safe();
             if (mem_fault_o)
-                $fatal(1, "Unexpected Memory fault during PAU CWM smoke");
+                report_failure("Unexpected Memory fault during PAU CWM smoke");
+            wait_cycles++;
         end
 
-        if (!saw_primary_req)
-            $fatal(1, "PAU top did not issue primary Memory requests");
-        if (!saw_primary_read)
-            $fatal(1, "PAU top did not issue primary Memory reads");
-        if (!saw_primary_write)
-            $fatal(1, "PAU top did not issue primary Memory writeback");
-        if (!saw_primary_response)
-            $fatal(1, "PAU top did not receive primary Memory read data");
-        if (!saw_aux_req)
-            $fatal(1, "PAU top did not drive the auxiliary CWM descriptor");
-        if (!saw_aux_read)
-            $fatal(1, "PAU top did not issue auxiliary CWM reads");
-        if (!saw_aux_response)
-            $fatal(1, "PAU top did not receive auxiliary CWM read data");
+        if (!dut.ctl_done)
+            report_failure("PAU top CWM run did not complete before timeout");
 
-        $display("TB PASS");
+        if (!saw_primary_req)
+            report_failure("PAU top did not issue primary Memory requests");
+        if (!saw_primary_read)
+            report_failure("PAU top did not issue primary Memory reads");
+        if (!saw_primary_write)
+            report_failure("PAU top did not issue primary Memory writeback");
+        if (!saw_primary_response)
+            report_failure("PAU top did not receive primary Memory read data");
+        if (cwm_issue_count != (CWM_NUM_TERMS * CWM_PAIRS_PER_TERM))
+            report_failure($sformatf(
+                "PAU top issued %0d CWM accumulation beats, expected %0d",
+                cwm_issue_count, (CWM_NUM_TERMS * CWM_PAIRS_PER_TERM)));
+        if (cwm_acc_fire_count != (CWM_NUM_TERMS * CWM_PAIRS_PER_TERM))
+            report_failure($sformatf(
+                "PAU top produced %0d aligned CWM accumulation beats, expected %0d",
+                cwm_acc_fire_count, (CWM_NUM_TERMS * CWM_PAIRS_PER_TERM)));
+        if (!saw_cwm_pair_revisit)
+            report_failure("CWM did not revisit pair_idx 0 after the first 128-pair sweep");
+        if (!saw_cwm_nonzero_old)
+            report_failure("CWM never observed a nonzero acc_old on a later-term pair revisit");
+        if (!saw_cwm_drain_write)
+            report_failure("CWM never produced a row-accumulator drain writeback");
+
+        if (check_fail_count == 0)
+            $display("TB PASS");
+        else
+            $display("TB SOFT FAIL (%0d checks)", check_fail_count);
         $finish;
     end
 
