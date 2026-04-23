@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 
 import qrem_mem_map_pkg::*;
+import qrem_global_pkg::*;
 
 module cmi_tb;
 

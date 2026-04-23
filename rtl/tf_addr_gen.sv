@@ -56,6 +56,7 @@
  */
 
 import poly_arith_pkg::*;
+import qrem_global_pkg::*;
 
 module tf_addr_gen (
     input   logic           clk,

@@ -11,6 +11,7 @@
  */
 
 import poly_arith_pkg::*;
+import qrem_global_pkg::*;
 
 module mod_uni_add_sub(
     // Inputs: Two 12-bit coefficients (0 to 3328)

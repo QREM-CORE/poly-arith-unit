@@ -32,6 +32,7 @@
  */
 
 import poly_arith_pkg::*;
+import qrem_global_pkg::*;
 
 module pau_controller #(
     parameter int NUM_POLYS = qrem_global_pkg::NUM_POLYS,

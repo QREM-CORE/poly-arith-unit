@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 
 import poly_arith_pkg::*;
+import qrem_global_pkg::*;
 
 module pau_controller_tb;
 

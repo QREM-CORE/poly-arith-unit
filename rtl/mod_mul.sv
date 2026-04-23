@@ -16,6 +16,7 @@
  */
 
 import poly_arith_pkg::*;
+import qrem_global_pkg::*;
 
 module mod_mul (
     input   logic   clk,

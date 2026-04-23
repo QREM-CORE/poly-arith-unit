@@ -30,6 +30,7 @@
  */
 
 import poly_arith_pkg::*;
+import qrem_global_pkg::*;
 import qrem_mem_map_pkg::*;
 
 module poly_arith_unit #(
