@@ -1,3 +1,6 @@
+# --- Submodules ---
+-f Memory/poly-mem-subsystem/rtl.f
+
 # --- Packages (Must be compiled first) ---
 rtl/poly_arith_pkg.sv
 
@@ -32,11 +35,6 @@ rtl/pe_unit.sv
 
 # --- PAU Controller ---
 rtl/pau_controller.sv
-
-# --- Memory integration note ---
-# pau_top_tb now compiles against Memory/poly-mem-subsystem/rtl/*.sv.
-# Do not include PAU-local stale memory wrappers in the default PAU RTL list;
-# they model the old fixed read/write wrapper and can hide aux-port drift.
 
 # --- Top Level ---
 rtl/pau_top.sv
