@@ -1,12 +1,13 @@
 `timescale 1ns/1ps
 
 import qrem_mem_map_pkg::*;
+import qrem_global_pkg::*;
 
 module cmi_tb;
 
     localparam int N         = 256;
     localparam int W         = 16;
-    localparam int NUM_POLYS = 32;
+    localparam int NUM_POLYS = qrem_global_pkg::NUM_POLYS;
     localparam int POLY_W    = $clog2(NUM_POLYS);
     localparam int COEFF_W   = $clog2(N);
 

@@ -21,6 +21,7 @@
  */
 
 import poly_arith_pkg::*;
+import qrem_global_pkg::*;
 
 module mod_div_by_2 (
     input   coeff_t op_i,

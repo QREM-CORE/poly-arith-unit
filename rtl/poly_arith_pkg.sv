@@ -1,28 +1,35 @@
 package poly_arith_pkg;
+
+    import qrem_global_pkg::*;
+    export qrem_global_pkg::*;
+
+
+    // Explicitly reference to ensure wildcard import captures these for export
+    localparam _unused_q = Q;
+    typedef pe_mode_e _unused_pe_mode;
+
+
     // =========================================================================
     // 1. Bus & Interface Configuration (AXI4-Stream)
     // =========================================================================
-    parameter int DWIDTH        = 256;          // Main data bus width (32 bytes)
-    parameter int KEEP_WIDTH    = DWIDTH / 8;   // TKEEP width (32 bits)
+    parameter int PAU_DWIDTH    = 256;          // Main data bus width (32 bytes)
+    parameter int KEEP_WIDTH    = PAU_DWIDTH / 8; // TKEEP width (32 bits)
     parameter int BYTE_SIZE     = 8;
 
     // =========================================================================
     // 2. ML-KEM Specific Constants (FIPS 203)
     // =========================================================================
-    parameter int Q             = 3329;         // The Modulus
-    parameter int N             = 256;          // Polynomial degree
     parameter int LOG_N         = 8;            // log2(256)
 
     // Coefficient sizing
-    parameter int COEFF_WIDTH   = 12;           // Mathematical width (min needed)
     parameter int STORE_WIDTH   = 16;           // Storage width (aligned for hardware)
 
     // Throughput Calculations
     // How many coefficients fit in one AXI beat? (256 / 16 = 16 coefficients)
-    parameter int COEFFS_PER_BEAT = DWIDTH / STORE_WIDTH;
+    parameter int COEFFS_PER_BEAT = PAU_DWIDTH / STORE_WIDTH;
 
     // How many beats to transfer one full polynomial? (256 / 16 = 16 beats)
-    parameter int BEATS_PER_POLY  = N / COEFFS_PER_BEAT;
+    parameter int BEATS_PER_POLY  = NCOEFF / COEFFS_PER_BEAT;
 
     typedef logic [11:0] coeff_t; // I/O type for coefficients (NTT and non-NTT values)
 
@@ -56,15 +63,7 @@ package poly_arith_pkg;
     // =========================================================================
 
     // -------------------------------------------------------------------------
-    // Processing Element (PE) Operating Modes
+    // Processing Element (PE) Operating Modes (Moved to qrem_global_pkg)
     // -------------------------------------------------------------------------
-    typedef enum logic [3:0] {
-        PE_MODE_CWM    = 4'b1000, // Coordinate-Wise Multiplication
-        PE_MODE_NTT    = 4'b1010, // Number Theoretic Transform
-        PE_MODE_INTT   = 4'b1111, // Inverse Number Theoretic Transform
-        PE_MODE_ADDSUB = 4'b0011, // Modular Addition / Subtraction
-        PE_MODE_COMP   = 4'b1100, // Compression (Co)
-        PE_MODE_DECOMP = 4'b0100  // Decompression (Deco)
-    } pe_mode_e;
 
 endpackage : poly_arith_pkg

@@ -1,12 +1,14 @@
 `timescale 1ns/1ps
 
 import poly_arith_pkg::*;
+import qrem_global_pkg::*;
 import qrem_mem_map_pkg::*;
-import qrem_seed_map_pkg::*;
+// import qrem_seed_map_pkg::*; // Use qrem_global_pkg Version instead
+
 
 module poly_arith_unit_tb;
 
-    localparam int NUM_POLYS  = 32;
+    localparam int NUM_POLYS  = qrem_global_pkg::NUM_POLYS;
     localparam int CWM_NUM_TERMS = 3;
     localparam int CWM_PAIRS_PER_TERM = 128;
     localparam int NCOEFF     = 256;
@@ -16,7 +18,7 @@ module poly_arith_unit_tb;
     localparam int MEM_WORD_W = STORE_WIDTH;
     localparam int POLY_W     = $clog2(NUM_POLYS);
     localparam int COEFF_W    = $clog2(NCOEFF);
-    localparam int SEED_IDX_W = $clog2(QREM_SEED_BEATS);
+    parameter int SEED_IDX_W = $clog2(SEED_BEATS);
 
     logic       clk;
     logic       rst;
@@ -167,9 +169,7 @@ module poly_arith_unit_tb;
         .W                 (W),
         .COEFF_W           (MEM_WORD_W),
         .SEED_DEPTH        (SEED_DEPTH),
-        .SEED_W            (SEED_W),
-        .POLY_PRELOAD_EN   (1'b1),
-        .POLY_PRELOAD_MODE (0)
+        .SEED_W            (SEED_W)
     ) u_mem (
         .clk(clk),
         .rst(rst),

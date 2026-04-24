@@ -49,6 +49,7 @@
  */
 
 import poly_arith_pkg::*;
+import qrem_global_pkg::*;
 
 module pe3 (
     input   logic           clk,

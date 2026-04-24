@@ -32,9 +32,10 @@
  */
 
 import poly_arith_pkg::*;
+import qrem_global_pkg::*;
 
 module pau_controller #(
-    parameter int NUM_POLYS = 32,
+    parameter int NUM_POLYS = qrem_global_pkg::NUM_POLYS,
     // Number of source terms in the current CWM row.
     // A value of 1 seeds the scratch row once but never revisits a prior
     // pair_idx, so later-term accumulation cannot happen.
