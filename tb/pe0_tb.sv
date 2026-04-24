@@ -6,6 +6,7 @@
 // ==========================================================
 `timescale 1ns/1ps
 
+import qrem_global_pkg::*;
 import poly_arith_pkg::*;
 
 module pe0_tb();
