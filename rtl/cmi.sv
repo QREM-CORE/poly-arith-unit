@@ -322,13 +322,13 @@ module cmi #(
                     end
 
                     if (is_radix2_i || (pass_idx_i == 2'd1) || (pass_idx_i == 2'd2)) begin
-                        // $display("CMI primary resp pass=%0d radix2=%0b req_idx={%0d,%0d,%0d,%0d} ret_idx={%0d,%0d,%0d,%0d} coeff_o={%0h,%0h,%0h,%0h}",
-                        //          pass_idx_i, is_radix2_i,
-                        //          primary_req_idx_r[0], primary_req_idx_r[1],
-                        //          primary_req_idx_r[2], primary_req_idx_r[3],
-                        //          pau_rd_idx_i[0], pau_rd_idx_i[1],
-                        //          pau_rd_idx_i[2], pau_rd_idx_i[3],
-                        //          coeff_o[0], coeff_o[1], coeff_o[2], coeff_o[3]);
+                        $display("CMI primary resp pass=%0d radix2=%0b req_idx={%0d,%0d,%0d,%0d} ret_idx={%0d,%0d,%0d,%0d} coeff_o={%0h,%0h,%0h,%0h}",
+                                 pass_idx_i, is_radix2_i,
+                                 primary_req_idx_r[0], primary_req_idx_r[1],
+                                 primary_req_idx_r[2], primary_req_idx_r[3],
+                                 pau_rd_idx_i[0], pau_rd_idx_i[1],
+                                 pau_rd_idx_i[2], pau_rd_idx_i[3],
+                                 coeff_o[0], coeff_o[1], coeff_o[2], coeff_o[3]);
                     end
                 end
             end

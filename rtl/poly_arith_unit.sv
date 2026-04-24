@@ -27,16 +27,7 @@ import qrem_global_pkg::*;
 import qrem_mem_map_pkg::*;
 
 module poly_arith_unit #(
-    parameter int NUM_POLYS = qrem_global_pkg::NUM_POLYS,
-    // Default to the largest ML-KEM row length supported by the current
-    // memory map. Higher-level integration should override this to the active
-    // parameter-set k:
-    //   k=2 -> ML-KEM-512, k=3 -> ML-KEM-768, k=4 -> ML-KEM-1024.
-    //
-    // If this stays at 1, CWM performs only the initial 128-pair sweep, so it
-    // never revisits the same pair_idx on a later source term and acc_old
-    // remains zero for the whole row.
-    parameter int CWM_NUM_TERMS = QREM_MAX_K
+    parameter int NUM_POLYS = qrem_global_pkg::NUM_POLYS
 )(
     input  logic       clk,
     input  logic       rst,
@@ -46,6 +37,8 @@ module poly_arith_unit #(
     input  pe_mode_e   op_type_i,
     input  logic [POLY_ID_WIDTH-1:0] primary_poly_id_i,
     input  logic [POLY_ID_WIDTH-1:0] aux_poly_id_i,
+    input  logic [POLY_ID_WIDTH-1:0] cwm_num_terms_i,
+    output logic       done_o,
 
     // ---- Memory Subsystem PAU Port ----
     output logic       pau_req_o,
@@ -224,8 +217,7 @@ module poly_arith_unit #(
 
     // ---- Controller ----
     pau_controller #(
-        .NUM_POLYS(NUM_POLYS),
-        .CWM_NUM_TERMS(CWM_NUM_TERMS)
+        .NUM_POLYS(NUM_POLYS)
     ) u_controller (
         .clk                (clk),
         .rst                (rst),
@@ -233,6 +225,7 @@ module poly_arith_unit #(
         .op_type_i          (op_type_i),
         .poly_id_i          (primary_poly_id_i),
         .aux_poly_id_i      (aux_poly_id_i),
+        .cwm_num_terms_i    (cwm_num_terms_i),
         .ready_o            (ctl_ready),
         .done_o             (ctl_done),
         .tf_start_o         (tf_start),
@@ -320,6 +313,8 @@ module poly_arith_unit #(
         .pau_aux_rd_lane_valid_i(pau_aux_rd_lane_valid_i),
         .pau_aux_rd_data_i      (pau_aux_rd_data_i)
     );
+
+    assign done_o = ctl_done;
 
     // ---- Twiddle Factor Address Generator ----
     tf_addr_gen u_tf_addr_gen (

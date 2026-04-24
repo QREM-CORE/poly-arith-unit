@@ -35,11 +35,7 @@ import poly_arith_pkg::*;
 import qrem_global_pkg::*;
 
 module pau_controller #(
-    parameter int NUM_POLYS = qrem_global_pkg::NUM_POLYS,
-    // Number of source terms in the current CWM row.
-    // A value of 1 seeds the scratch row once but never revisits a prior
-    // pair_idx, so later-term accumulation cannot happen.
-    parameter int CWM_NUM_TERMS = 1
+    parameter int NUM_POLYS = qrem_global_pkg::NUM_POLYS
 )(
     input  logic             clk,
     input  logic             rst,
@@ -49,6 +45,7 @@ module pau_controller #(
     input  pe_mode_e         op_type_i,
     input  logic [$clog2(NUM_POLYS)-1:0] poly_id_i,
     input  logic [$clog2(NUM_POLYS)-1:0] aux_poly_id_i,
+    input  logic [$clog2(NUM_POLYS)-1:0] cwm_num_terms_i,
 
     output logic             ready_o,
     output logic             done_o,
@@ -101,7 +98,7 @@ module pau_controller #(
     localparam logic [8:0] COEFFS_PER_POLY      = 9'd256;
     localparam logic [7:0] COEFFS_PER_ISSUE     = 8'd4;
     localparam logic [6:0] CWM_PAIR_LAST        = 7'd127;
-    localparam logic [POLY_W-1:0] CWM_TERM_LAST  = POLY_W'(CWM_NUM_TERMS - 1);
+    localparam logic [POLY_W-1:0] CWM_TERM_ZERO  = '0;
 
     // Pass indices
     localparam logic [1:0] PASS_0               = 2'd0;
@@ -158,6 +155,7 @@ module pau_controller #(
     // =========================================================================
     pe_mode_e   op_r;
     logic [POLY_W-1:0] poly_id_r;
+    logic [POLY_W-1:0] cwm_num_terms_r;
     logic [1:0] pass_idx_r, pass_idx_n;
 
     // =========================================================================
@@ -568,7 +566,7 @@ module pau_controller #(
                         // phase that writes final t_hat back to memory.
                         if (issue_addr_r[6:0] == CWM_PAIR_LAST) begin
                             issue_addr_n = ZERO8;
-                            if (cwm_term_idx_r == CWM_TERM_LAST) begin
+                            if (cwm_term_idx_r == (cwm_num_terms_r - POLY_W'(1))) begin
                                 cwm_drain_idx_n = 7'd0;
                                 state_n         = S_DRAIN;
                             end else begin
@@ -676,16 +674,17 @@ module pau_controller #(
 
             // Latch job parameters once at job start
             if (state_r == S_IDLE && start_i) begin
-                op_r         <= op_type_i;
-                poly_id_r    <= poly_id_i;
-                pass_idx_r   <= ZERO2;
-                block_cnt_r  <= ZERO6;
-                bf_cnt_r     <= ZERO6;
-                drain_cnt_r  <= ZERO4;
+                op_r            <= op_type_i;
+                poly_id_r       <= poly_id_i;
+                cwm_num_terms_r <= cwm_num_terms_i;
+                pass_idx_r      <= ZERO2;
+                block_cnt_r     <= ZERO6;
+                bf_cnt_r        <= ZERO6;
+                drain_cnt_r     <= ZERO4;
                 cwm_term_idx_r  <= '0;
                 cwm_drain_idx_r <= 7'd0;
-                issue_addr_r <= ZERO8;
-                aux_poly_id_r <= aux_poly_id_i;
+                issue_addr_r    <= ZERO8;
+                aux_poly_id_r   <= aux_poly_id_i;
             end
 
             // Delay control/valid by 1 cycle to match wrapper read latency
