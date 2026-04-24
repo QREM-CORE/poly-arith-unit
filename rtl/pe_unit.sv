@@ -263,6 +263,9 @@ module pe_unit (
         valid_o = 1'b0;
 
         case(ctrl_i)
+            PE_MODE_IDLE: begin
+                // Idle state, do nothing
+            end
             PE_MODE_CWM : begin
                 // ---------------------------------------------------------
                 // External Mapping for CWM (5 Inputs Used):
