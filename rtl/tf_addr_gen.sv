@@ -97,7 +97,6 @@ module tf_addr_gen (
     // =========================================================================
 
     // Mode latch (captured on start)
-    pe_mode_e   mode_r;
     logic       is_intt_r;
     logic       is_cwm_r;
 
@@ -254,7 +253,6 @@ module tf_addr_gen (
     always_ff @(posedge clk) begin
         if (rst) begin
             state_r     <= S_IDLE;
-            mode_r      <= PE_MODE_NTT;
             is_intt_r   <= 1'b0;
             is_cwm_r    <= 1'b0;
             bf_cnt_r    <= '0;
@@ -267,7 +265,6 @@ module tf_addr_gen (
             case (state_r)
                 S_IDLE: begin
                     if (start_i) begin
-                        mode_r      <= ctrl_i;
                         is_intt_r   <= (ctrl_i == PE_MODE_INTT);
                         is_cwm_r    <= (ctrl_i == PE_MODE_CWM);
                         bf_cnt_r    <= '0;
