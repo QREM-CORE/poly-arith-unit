@@ -27,7 +27,8 @@ import qrem_global_pkg::*;
 import qrem_mem_map_pkg::*;
 
 module poly_arith_unit #(
-    parameter int NUM_POLYS = qrem_global_pkg::NUM_POLYS
+    parameter int NUM_POLYS = qrem_global_pkg::NUM_POLYS,
+    parameter int CWM_NUM_TERMS = 3
 )(
     input  logic       clk,
     input  logic       rst,
