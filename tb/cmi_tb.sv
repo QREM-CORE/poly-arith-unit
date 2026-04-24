@@ -160,9 +160,12 @@ module cmi_tb;
         rst = 1'b0;
         tick();
 
+        $display("Starting CMI Testbench...");
+
         // ------------------------------------------------------
         // 1) Read request forwarding
         // ------------------------------------------------------
+        $display("Section 1: Read request forwarding...");
         poly_id_i           = POLY_W'(2);
         v_i                 = 1'b1;
         rd_en_i             = 1'b1;
@@ -184,10 +187,12 @@ module cmi_tb;
 
         tick();
         clear_inputs();
+        $display("Section 1 Passed.");
 
         // ------------------------------------------------------
         // 2) Read response routing follows returned idx, not raw lane order
         // ------------------------------------------------------
+        $display("Section 2: Read response routing...");
         pau_rd_valid_i      = 1'b1;
         pau_rd_poly_id_i    = POLY_W'(2);
         pau_rd_lane_valid_i = 4'b1111;
@@ -205,10 +210,12 @@ module cmi_tb;
             $fatal(1, "CMI primary read response reorder mismatch");
         tick();
         clear_inputs();
+        $display("Section 2 Passed.");
 
         // ------------------------------------------------------
         // 3) CWM dual-read response routing also follows returned idx
         // ------------------------------------------------------
+        $display("Section 3: CWM dual-read response routing...");
         poly_id_i           = '0;
         v_i                 = 1'b1;
         rd_en_i             = 1'b1;
@@ -240,10 +247,12 @@ module cmi_tb;
             $fatal(1, "CMI CWM primary/aux response reorder mismatch");
         tick();
         clear_inputs();
+        $display("Section 3 Passed.");
 
         // ------------------------------------------------------
         // 4) INTT radix-2 writeback restores natural {0,1,2,3} order
         // ------------------------------------------------------
+        $display("Section 4: INTT radix-2 writeback reorder...");
         pass_idx_i          = 2'd0;
         is_radix2_i         = 1'b1;
         coeff_idx_i[0]      = COEFF_W'(40);
@@ -269,10 +278,12 @@ module cmi_tb;
             $fatal(1, "CMI INTT radix-2 writeback data reorder mismatch");
 
         clear_inputs();
+        $display("Section 4 Passed.");
 
         // ------------------------------------------------------
         // 5) Ready mirrors downstream memory readiness
         // ------------------------------------------------------
+        $display("Section 5: Ready/Stall check...");
         pau_stall_i = 1'b1;
         #1;
         if (ready_o !== 1'b0)
@@ -281,10 +292,12 @@ module cmi_tb;
         #1;
         if (ready_o !== 1'b1)
             $fatal(1, "CMI ready_o failed to return high");
+        $display("Section 5 Passed.");
 
         // ------------------------------------------------------
         // 6) Write-only drain cycle is allowed
         // ------------------------------------------------------
+        $display("Section 6: Write-only drain cycle...");
         clear_inputs();
         wr_en_i          = 4'b0011;
         wr_data_i[0]     = 16'hAAAA;
@@ -294,10 +307,12 @@ module cmi_tb;
             $fatal(1, "CMI must assert pau_req_o for write-only cycles");
         if (pau_wr_poly_id_o !== '0)
             $fatal(1, "CMI write poly_id should default from the input poly_id");
+        $display("Section 6 Passed.");
 
         // ------------------------------------------------------
         // 7) Writeback alignment for latency=2
         // ------------------------------------------------------
+        $display("Section 7: Writeback alignment latency=2...");
         clear_inputs();
         coeff_idx_i[0]   = COEFF_W'(20);
         coeff_idx_i[1]   = COEFF_W'(21);
@@ -322,10 +337,12 @@ module cmi_tb;
             $fatal(1, "CMI latency-2 write data mismatch");
         tick();
         clear_inputs();
+        $display("Section 7 Passed.");
 
         // ------------------------------------------------------
         // 8) Writeback alignment for latency=4
         // ------------------------------------------------------
+        $display("Section 8: Writeback alignment latency=4...");
         coeff_idx_i[0]   = COEFF_W'(40);
         coeff_idx_i[1]   = COEFF_W'(41);
         coeff_idx_i[2]   = COEFF_W'(42);
@@ -350,10 +367,12 @@ module cmi_tb;
 
         tick();
         clear_inputs();
+        $display("Section 8 Passed.");
 
         // ------------------------------------------------------
         // 9) Writeback alignment for latency=6
         // ------------------------------------------------------
+        $display("Section 9: Writeback alignment latency=6...");
         coeff_idx_i[0]   = COEFF_W'(60);
         coeff_idx_i[1]   = COEFF_W'(61);
         coeff_idx_i[2]   = COEFF_W'(62);
@@ -380,10 +399,12 @@ module cmi_tb;
 
         tick();
         clear_inputs();
+        $display("Section 9 Passed.");
 
         // ------------------------------------------------------
         // 10) Writeback alignment for latency=10
         // ------------------------------------------------------
+        $display("Section 10: Writeback alignment latency=10...");
         coeff_idx_i[0]   = COEFF_W'(80);
         coeff_idx_i[1]   = COEFF_W'(81);
         coeff_idx_i[2]   = COEFF_W'(82);
@@ -406,6 +427,8 @@ module cmi_tb;
         if (pau_wr_data_o[1] !== 16'h9001 || pau_wr_data_o[2] !== 16'h9002)
             $fatal(1, "CMI latency-10 write data mismatch");
 
+        $display("Section 10 Passed.");
+        $display("--- ALL CMI TESTS PASSED ---");
         $display("TB PASS");
         $finish;
     end
