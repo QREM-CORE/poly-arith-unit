@@ -1,6 +1,6 @@
 /*
  * Module Name: poly_arith_unit
- * Author(s): Jessica Buentipo
+ * Author(s): Jessica Buentipo, Quardin Lyttle, Kiet Le
  * Target: FIPS 203 (ML-KEM / Kyber) Hardware Accelerator
  *
  * Reference:
@@ -12,21 +12,14 @@
  * Description:
  * Top module for the whole Poly Arithmetic Unit (PAU) system.
  *
- * This modified version adds PE -> local row accumulator -> CMI writeback
- * plumbing for the scratchpad-backed CWM update explored on the
- * quardins-attempted-updates branch.
- *
  * Notes:
- *   - Writeback is enabled for NTT / INTT / ADDSUB / COMP / DECOMP as before.
- *   - CWM now accumulates locally through mac_row_accum and writes back during
+ *   - Writeback is enabled for NTT / INTT / ADDSUB / COMP / DECOMP.
+ *   - CWM accumulates locally through mac_row_accum and writes back during
  *     a dedicated drain phase.
- *   - The true dual-source CWM / ADD / SUB memory interface is still a
- *     follow-on task. This branch focuses on the MAC/scratchpad side of the
- *     architecture and keeps the PAU auxiliary Memory descriptor tied idle.
- *   - PE op_a inputs now come from coeff_from_cmi rather than raw memory data.
- *   - The top-level memory boundary now exposes the current Memory Subsystem
- *     PAU primary + auxiliary port set. Only the primary descriptor is driven
- *     by current PAU RTL.
+ *   - CWM consumes the PAU auxiliary descriptor for dual-source {A_hat, s_hat} fetch.
+ *   - ADD/SUB uses the auxiliary descriptor to fetch the secondary operand Y.
+ *   - PE op_a inputs come from coeff_from_cmi primary descriptor.
+ *   - PE op_b inputs come from coeff_from_cmi auxiliary descriptor for ADDSUB.
  */
 
 import poly_arith_pkg::*;
@@ -51,6 +44,8 @@ module poly_arith_unit #(
     // ---- Control Interface (From Main System) ----
     input  logic       start_i,
     input  pe_mode_e   op_type_i,
+    input  logic [POLY_ID_WIDTH-1:0] primary_poly_id_i,
+    input  logic [POLY_ID_WIDTH-1:0] aux_poly_id_i,
 
     // ---- Memory Subsystem PAU Port ----
     output logic       pau_req_o,
@@ -94,11 +89,11 @@ module poly_arith_unit #(
     localparam int POLY_W = $clog2(NUM_POLYS);
     localparam logic [POLY_W-1:0] DEFAULT_POLY_ID = '0;
 
-    // NOTE(PAU/Mem): CWM now consumes the PAU auxiliary descriptor during the
+    // NOTE(PAU/Mem): CWM consumes the PAU auxiliary descriptor during the
     // accepted accumulation beats so the PE sees {A_hat[2p], A_hat[2p+1],
     // s_hat[2p], s_hat[2p+1]} in the same cycle. NTT / INTT / COMP / DECOMP
-    // continue to use only the primary descriptor. ADD/SUB still needs a real
-    // secondary-operand schedule on this path.
+    // continue to use only the primary descriptor. ADD/SUB uses the auxiliary
+    // descriptor for the secondary operand Y.
 
     // Controller -> TF/PE side
     logic            ctl_ready;
@@ -127,6 +122,10 @@ module poly_arith_unit #(
 
     // CMI -> PE side
     logic [3:0][15:0]             coeff_from_cmi;
+    logic [3:0][15:0]             aux_coeff_from_cmi;
+    logic            cmi_aux_v;
+    logic            cmi_aux_rd_en;
+    logic [POLY_W-1:0] cmi_aux_poly_id;
 
     // PE outputs
     coeff_t z0_o;
@@ -232,7 +231,8 @@ module poly_arith_unit #(
         .rst                (rst),
         .start_i            (start_i),
         .op_type_i          (op_type_i),
-        .poly_id_i          (DEFAULT_POLY_ID),
+        .poly_id_i          (primary_poly_id_i),
+        .aux_poly_id_i      (aux_poly_id_i),
         .ready_o            (ctl_ready),
         .done_o             (ctl_done),
         .tf_start_o         (tf_start),
@@ -252,6 +252,9 @@ module poly_arith_unit #(
         .cmi_v_o            (cmi_v),
         .cmi_rd_en_o        (cmi_rd_en),
         .cmi_poly_id_o      (cmi_poly_id),
+        .cmi_aux_v_o        (cmi_aux_v),
+        .cmi_aux_rd_en_o    (cmi_aux_rd_en),
+        .cmi_aux_poly_id_o  (cmi_aux_poly_id),
         .cmi_coeff_idx_o    (cmi_coeff_idx),
         .cmi_coeff_valid_o  (cmi_coeff_v),
         .cmi_wb_latency_o   (cmi_wb_latency),
@@ -271,8 +274,11 @@ module poly_arith_unit #(
         .coeff_idx_i            (cmi_coeff_idx),
         .coeff_valid_i          (cmi_coeff_v),
         .poly_id_i              (cmi_poly_id),
+        .aux_poly_id_i          (cmi_aux_poly_id),
         .v_i                    (cmi_v),
+        .aux_v_i                (cmi_aux_v),
         .rd_en_i                (cmi_rd_en),
+        .aux_rd_en_i            (cmi_aux_rd_en),
         .wb_latency_i           (cmi_wb_latency),
         .cwm_mode_i             (is_cwm),
         .cwm_issue_i            (mac_issue),
@@ -282,6 +288,7 @@ module poly_arith_unit #(
         .wr_en_i                (pe_wb_en),
         .wr_data_i              (pe_wb_data),
         .coeff_o                (coeff_from_cmi),
+        .aux_coeff_o            (aux_coeff_from_cmi),
         .ready_o                (cmi_ready),
         .pau_req_o              (pau_req_o),
         .pau_rd_en_o            (pau_rd_en_o),
@@ -410,12 +417,6 @@ module poly_arith_unit #(
     );
 
     // ---- Processing Element (PE) Unit ----
-    // NOTE(PAU): op_b is currently sourced from the twiddle/constant path.
-    // That is correct for NTT/INTT, but not for ADD/SUB. ADD/SUB requires a
-    // second memory-source vector Y[0..3], most naturally returned through the
-    // Memory auxiliary PAU read channel once CMI grows that path.
-    // TODO(PAU): route aux read data into op_b for ADD/SUB; do not assume the
-    // NTT twiddle pattern generalizes to pointwise arithmetic.
     pe_unit u_pe_unit (
         .clk                (clk),
         .rst                (rst),
@@ -426,10 +427,11 @@ module poly_arith_unit #(
         .op_a1_i            (coeff_from_cmi[1][COEFF_WIDTH-1:0]),
         .op_a2_i            (coeff_from_cmi[2][COEFF_WIDTH-1:0]),
         .op_a3_i            (coeff_from_cmi[3][COEFF_WIDTH-1:0]),
-        .op_b0_i            (is_cwm ? w0_cwm_aligned : w0),
-        .op_b1_i            (w1),
-        .op_b2_i            (w2),
-        .op_b3_i            (w3),
+        .op_b0_i            (pe_ctrl == PE_MODE_ADDSUB ? aux_coeff_from_cmi[0][COEFF_WIDTH-1:0] :
+                             (is_cwm ? w0_cwm_aligned : w0)),
+        .op_b1_i            (pe_ctrl == PE_MODE_ADDSUB ? aux_coeff_from_cmi[1][COEFF_WIDTH-1:0] : w1),
+        .op_b2_i            (pe_ctrl == PE_MODE_ADDSUB ? aux_coeff_from_cmi[2][COEFF_WIDTH-1:0] : w2),
+        .op_b3_i            (pe_ctrl == PE_MODE_ADDSUB ? aux_coeff_from_cmi[3][COEFF_WIDTH-1:0] : w3),
         .z0_o               (z0_o),
         .z1_o               (z1_o),
         .z2_o               (z2_o),
@@ -448,23 +450,12 @@ module poly_arith_unit #(
         .pair_idx_i     (cwm_pair_idx_aligned),
         .cwm0_i         (cwm_z1_aligned),
         .cwm1_i         (z2_o),
-        // The row accumulator should only drain once the e_hat pair being
-        // fused into the final t_hat writeback has actually returned from the
-        // memory subsystem on the PAU read-response channel.
-        //
-        // TODO(PAU, correctness): CMI now splits the fixed CWM read/write
-        // slots, but the controller still exposes only one base poly_id and no
-        // outer-row / outer-column schedule. The full KeyGen row contract still
-        // needs explicit ownership of which A_j, s_j, and T_i slots are active.
         .drain_req_i    (drain_issue_d1 && pau_rd_valid_i),
         .drain_idx_i    (drain_idx_d1),
         .fuse_e_i       (fuse_e_d1),
         .e0_i           (coeff_from_cmi[0][COEFF_WIDTH-1:0]),
         .e1_i           (coeff_from_cmi[1][COEFF_WIDTH-1:0]),
-        // Current top-level does not yet close writeback backpressure all the
-        // way through CMI for the new drain path. Hold this at 1 for now and
-        // document the limitation in the branch note.
-        .drain_ready_i  (1'b1),
+        .drain_ready_i  (cmi_ready),
         .drain_accept_o (mac_drain_accept),
         .drain_valid_o  (acc_drain_valid),
         .drain_pair_idx_o(acc_drain_pair_idx),

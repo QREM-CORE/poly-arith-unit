@@ -48,6 +48,7 @@ module pau_controller #(
     input  logic             start_i,
     input  pe_mode_e         op_type_i,
     input  logic [$clog2(NUM_POLYS)-1:0] poly_id_i,
+    input  logic [$clog2(NUM_POLYS)-1:0] aux_poly_id_i,
 
     output logic             ready_o,
     output logic             done_o,
@@ -79,9 +80,12 @@ module pau_controller #(
     output logic             cmi_v_o,
     output logic             cmi_rd_en_o,
     output logic [$clog2(NUM_POLYS)-1:0] cmi_poly_id_o,
+    output logic [$clog2(NUM_POLYS)-1:0] cmi_aux_poly_id_o,
     output logic [3:0][7:0]  cmi_coeff_idx_o,
     output logic [3:0]       cmi_coeff_valid_o,
     output logic [3:0]       cmi_wb_latency_o,
+    output logic             cmi_aux_v_o,
+    output logic             cmi_aux_rd_en_o,
 
     // ---- Optional pass status ----
     output logic [5:0]       block_cnt_o,
@@ -164,6 +168,7 @@ module pau_controller #(
     logic [5:0]    bfs_max;
     logic [3:0]    pipe_lat;
     logic [3:0]    wb_lat;
+    logic [POLY_W-1:0] aux_poly_id_r;
     logic          pass_uses_tf;
     logic          last_pass;
 
@@ -655,6 +660,7 @@ module pau_controller #(
             cwm_term_idx_r  <= '0;
             cwm_drain_idx_r <= 7'd0;
             issue_addr_r <= ZERO8;
+            aux_poly_id_r <= '0;
 
             pe_ctrl_d1_r  <= PE_MODE_NTT;
             pe_valid_d1_r <= 1'b0;
@@ -679,6 +685,7 @@ module pau_controller #(
                 cwm_term_idx_r  <= '0;
                 cwm_drain_idx_r <= 7'd0;
                 issue_addr_r <= ZERO8;
+                aux_poly_id_r <= aux_poly_id_i;
             end
 
             // Delay control/valid by 1 cycle to match wrapper read latency
@@ -715,12 +722,18 @@ module pau_controller #(
     assign cmi_poly_id_o =
         ((state_r == S_RUN) && (op_r == PE_MODE_CWM)) ? cwm_term_idx_r : poly_id_r;
 
+    // ADD/SUB and CWM both use the auxiliary port for dual-source fetch.
+    assign cmi_aux_poly_id_o = aux_poly_id_r;
+
     // CWM drain needs to keep reading e_hat pairs while the row accumulator
     // emits final t_hat writeback pairs. For all other ops, CMI is active
     // only during the original S_RUN read issue phase.
     assign cmi_v_o     = (state_r == S_RUN) ||
                          ((state_r == S_DRAIN) && (op_r == PE_MODE_CWM));
     assign cmi_rd_en_o = issue_fire || cwm_drain_issue;
+    assign cmi_aux_v_o = (state_r == S_RUN) &&
+                         ((op_r == PE_MODE_CWM) || (op_r == PE_MODE_ADDSUB));
+    assign cmi_aux_rd_en_o = cmi_aux_v_o && cmi_ready_i;
 
     // In CWM drain we read just the e_hat pair that will be fused with the
     // scratch accumulator output.
@@ -742,6 +755,7 @@ module pau_controller #(
     assign cmi_coeff_valid_o =
         ((state_r == S_DRAIN) && (op_r == PE_MODE_CWM)) ? 4'b0011 :
         ((state_r == S_RUN)   && (op_r == PE_MODE_CWM)) ? 4'b0011 :
+        ((state_r == S_RUN)   && (op_r == PE_MODE_ADDSUB)) ? 4'b1111 :
         (state_r == S_RUN)                                ? 4'b1111 :
                                                             4'b0000;
 
