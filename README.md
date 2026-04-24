@@ -37,7 +37,6 @@ Low-level mathematical building blocks designed strictly for 12-bit integer arit
 * `mod_add.sv` / `mod_sub.sv`: Modular adders and subtractors.
 * `mod_uni_add_sub.sv`: Unified adder/subtractor.
 * `mod_div_by_2.sv`: Optimized shift logic for modular division.
-* `mac_adder.sv`: Multiply-accumulate support blocks.
 
 ### 3. Twiddle Factor Management
 The control plane for Number Theoretic Transforms, managing the deterministic lookup of powers of the root of unity ($\zeta$).
