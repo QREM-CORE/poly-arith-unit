@@ -118,17 +118,15 @@ module mac_row_accum_tb;
         end
     endtask
 
-    task automatic dump_acc_debug(
+    function automatic string get_acc_debug(
         input string      label,
         input logic [6:0] test_idx
     );
-        begin
-            $display("[DBG] %s pair_idx=%0d first_term=%0b acc_fire=%0b cwm0=%0d cwm1=%0d acc0_old=%0d acc1_old=%0d acc0_sum=%0d acc1_sum=%0d acc0_mem[test_idx]=%0d acc1_mem[test_idx]=%0d",
+        return $sformatf("[DBG] %s pair_idx=%0d first_term=%0b acc_fire=%0b cwm0=%0d cwm1=%0d acc0_old=%0d acc1_old=%0d acc0_sum=%0d acc1_sum=%0d acc0_mem[%0d]=%0d acc1_mem[%0d]=%0d",
                      label, pair_idx_i, first_term_i, acc_fire_i, cwm0_i, cwm1_i,
                      dut.acc0_old, dut.acc1_old, dut.acc0_sum, dut.acc1_sum,
-                     dut.acc0_mem[test_idx], dut.acc1_mem[test_idx]);
-        end
-    endtask
+                     test_idx, dut.acc0_mem[test_idx], test_idx, dut.acc1_mem[test_idx]);
+    endfunction
 
 
     task automatic drive_acc(
@@ -143,7 +141,12 @@ module mac_row_accum_tb;
         input coeff_t     exp_new1,
         input string      label
     );
+        int entry_errors;
+        string debug_log;
         begin
+            entry_errors = error_count;
+            debug_log = "";
+
             @(negedge clk);
             acc_fire_i   = 1'b1;
             first_term_i = first_term;
@@ -152,7 +155,7 @@ module mac_row_accum_tb;
             cwm1_i       = c1;
 
             #1;
-            dump_acc_debug({label, " pre"}, idx);
+            debug_log = {debug_log, get_acc_debug({label, " pre"}, idx), "\n"};
             if (check_old) begin
                 expect_coeff({label, " acc0_old"}, dut.acc0_old, exp_old0);
                 expect_coeff({label, " acc1_old"}, dut.acc1_old, exp_old1);
@@ -160,8 +163,12 @@ module mac_row_accum_tb;
 
             @(posedge clk);
             #1;
-            dump_acc_debug({label, " post"}, idx);
+            debug_log = {debug_log, get_acc_debug({label, " post"}, idx), "\n"};
             check_scratch(idx, exp_new0, exp_new1, label);
+
+            if (error_count > entry_errors) begin
+                $display("%s", debug_log);
+            end
 
             clear_inputs();
         end
@@ -211,6 +218,7 @@ module mac_row_accum_tb;
         rst = 1'b0;
         repeat (1) @(posedge clk);
 
+        $display(">>> TESTCASE: Seeding First Row");
         // first_term_i is now a 1-cycle "start new row" pulse. The module
         // keeps seeding until the first sweep reaches PAIR_LAST.
         drive_acc(1'b1, PAIR_0,   12'd10, 12'd20, 1'b1, '0, '0, 12'd10, 12'd20,
@@ -222,6 +230,7 @@ module mac_row_accum_tb;
         drive_acc(1'b0, PAIR_LAST,12'd11, 12'd12, 1'b1, '0, '0, 12'd11, 12'd12,
                   "test1_seed_pair3_last");
 
+        $display(">>> TESTCASE: Revisiting Pairs (MAC Accumulation)");
         // Once the first sweep has touched every pair slot, revisits must use
         // the stored partial sums instead of reseeding from scratch.
         drive_acc(1'b0, PAIR_P, 12'd3, 12'd4, 1'b1, 12'd7, 12'd8, 12'd10, 12'd12,
@@ -231,6 +240,7 @@ module mac_row_accum_tb;
         check_scratch(PAIR_0,    12'd10, 12'd20, "test4_pair0_unchanged");
         check_scratch(PAIR_LAST, 12'd11, 12'd12, "test4_pair3_unchanged");
 
+        $display(">>> TESTCASE: Draining Result (With optional Fuse)");
         // Prove drain can immediately see the accumulated pair and optional +e_hat fuse.
         drive_drain(PAIR_Q, 1'b0, '0, '0, 12'd14, 12'd16, "test5_drain_q_plain");
         drive_drain(PAIR_P, 1'b0, '0, '0, 12'd10, 12'd12, "test6_drain_p_plain");
