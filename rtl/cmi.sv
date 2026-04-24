@@ -152,8 +152,12 @@ module cmi #(
 
     logic [3:0][$clog2(N)-1:0] wr_idx_pipe   [0:MAX_WB_LAT];
     logic [3:0]                valid_pipe    [0:MAX_WB_LAT];
+    logic [1:0]                pass_idx_pipe [0:MAX_WB_LAT];
+    logic                      is_radix2_pipe [0:MAX_WB_LAT];
     logic [3:0][$clog2(N)-1:0] wr_idx_sel;
     logic [3:0]                coeff_valid_sel;
+    logic [1:0]                pass_idx_sel;
+    logic                      is_radix2_sel;
     logic [3:0][$clog2(N)-1:0] wb_idx_head;
     logic [3:0]                wb_valid_head;
 
@@ -351,15 +355,6 @@ module cmi #(
                                    src, pau_aux_rd_idx_i[src]);
                         end
                     end
-
-                    if ((pass_idx_i == 2'd1) || (pass_idx_i == 2'd2)) begin
-                        $display("CMI aux resp pass=%0d radix2=%0b req_idx={%0d,%0d} ret_idx={%0d,%0d,%0d,%0d} coeff_o={%0h,%0h,%0h,%0h}",
-                                 pass_idx_i, is_radix2_i,
-                                 aux_req_idx_r[0], aux_req_idx_r[1],
-                                 pau_aux_rd_idx_i[0], pau_aux_rd_idx_i[1],
-                                 pau_aux_rd_idx_i[2], pau_aux_rd_idx_i[3],
-                                 coeff_o[0], coeff_o[1], coeff_o[2], coeff_o[3]);
-                    end
                 end
             end
         end
@@ -394,6 +389,8 @@ module cmi #(
             assign wr_idx_pipe[0][i0] = wb_idx_head[i0];
             assign valid_pipe[0][i0]  = wb_valid_head[i0];
         end
+        assign pass_idx_pipe[0]   = pass_idx_i;
+        assign is_radix2_pipe[0]  = is_radix2_i;
     endgenerate
 
     generate
@@ -419,27 +416,88 @@ module cmi #(
                     .data_o (valid_pipe[d+1][i])
                 );
             end
+
+            delay_n #(
+                .DWIDTH (2),
+                .DEPTH  (d+1)
+            ) u_pass_delay (
+                .clk    (clk),
+                .rst    (rst),
+                .data_i (pass_idx_i),
+                .data_o (pass_idx_pipe[d+1])
+            );
+
+            delay_n #(
+                .DWIDTH (1),
+                .DEPTH  (d+1)
+            ) u_r2_delay (
+                .clk    (clk),
+                .rst    (rst),
+                .data_i (is_radix2_i),
+                .data_o (is_radix2_pipe[d+1])
+            );
         end
     endgenerate
 
     always_comb begin
         wr_idx_sel      = wr_idx_pipe[2];
         coeff_valid_sel = valid_pipe[2];
+        pass_idx_sel    = pass_idx_pipe[2];
+        is_radix2_sel   = is_radix2_pipe[2];
 
         unique case (wb_latency_i)
-            4'd2: begin wr_idx_sel = wr_idx_pipe[2]; coeff_valid_sel = valid_pipe[2]; end
-            4'd4: begin wr_idx_sel = wr_idx_pipe[4]; coeff_valid_sel = valid_pipe[4]; end
-            4'd5: begin wr_idx_sel = wr_idx_pipe[5]; coeff_valid_sel = valid_pipe[5]; end
-            4'd6: begin wr_idx_sel = wr_idx_pipe[6]; coeff_valid_sel = valid_pipe[6]; end
-            4'd9: begin wr_idx_sel = wr_idx_pipe[9]; coeff_valid_sel = valid_pipe[9]; end
-            4'd10: begin wr_idx_sel = wr_idx_pipe[10]; coeff_valid_sel = valid_pipe[10]; end
-            default: begin wr_idx_sel = wr_idx_pipe[2]; coeff_valid_sel = valid_pipe[2]; end
+            4'd2: begin 
+                wr_idx_sel = wr_idx_pipe[2]; coeff_valid_sel = valid_pipe[2];
+                pass_idx_sel = pass_idx_pipe[2]; is_radix2_sel = is_radix2_pipe[2];
+            end
+            4'd4: begin 
+                wr_idx_sel = wr_idx_pipe[4]; coeff_valid_sel = valid_pipe[4];
+                pass_idx_sel = pass_idx_pipe[4]; is_radix2_sel = is_radix2_pipe[4];
+            end
+            4'd5: begin 
+                wr_idx_sel = wr_idx_pipe[5]; coeff_valid_sel = valid_pipe[5];
+                pass_idx_sel = pass_idx_pipe[5]; is_radix2_sel = is_radix2_pipe[5];
+            end
+            4'd6: begin 
+                wr_idx_sel = wr_idx_pipe[6]; coeff_valid_sel = valid_pipe[6];
+                pass_idx_sel = pass_idx_pipe[6]; is_radix2_sel = is_radix2_pipe[6];
+            end
+            4'd9: begin 
+                wr_idx_sel = wr_idx_pipe[9]; coeff_valid_sel = valid_pipe[9];
+                pass_idx_sel = pass_idx_pipe[9]; is_radix2_sel = is_radix2_pipe[9];
+            end
+            4'd10: begin 
+                wr_idx_sel = wr_idx_pipe[10]; coeff_valid_sel = valid_pipe[10];
+                pass_idx_sel = pass_idx_pipe[10]; is_radix2_sel = is_radix2_pipe[10];
+            end
+            default: begin 
+                wr_idx_sel = wr_idx_pipe[2]; coeff_valid_sel = valid_pipe[2];
+                pass_idx_sel = pass_idx_pipe[2]; is_radix2_sel = is_radix2_pipe[2];
+            end
         endcase
     end
 
-    assign pau_wr_en_o   = wr_en_i & coeff_valid_sel;
+    // INTT radix-2 pass 0 writeback must reorder data/enables to match the 
+    // restored natural index order {0,1,2,3}.
+    logic [3:0]        wr_en_reordered;
+    logic [3:0][W-1:0] wr_data_reordered;
+
+    always_comb begin
+        wr_en_reordered   = wr_en_i;
+        wr_data_reordered = wr_data_i;
+
+        if (is_radix2_sel && (pass_idx_sel == 2'd0)) begin
+            wr_en_reordered[1]   = wr_en_i[2];
+            wr_en_reordered[2]   = wr_en_i[1];
+            wr_data_reordered[1] = wr_data_i[2];
+            wr_data_reordered[2] = wr_data_i[1];
+        end
+    end
+
+    assign pau_wr_en_o   = wr_en_reordered & coeff_valid_sel;
     assign pau_wr_idx_o  = wr_idx_sel;
-    assign pau_wr_data_o = wr_data_i;
+    assign pau_wr_data_o = wr_data_reordered;
+
 
     // ============================================================
     // READY

@@ -258,11 +258,17 @@ module cmi_tb;
         wr_data_i[2]        = 16'h0300;
         wr_data_i[3]        = 16'h0400;
         tick();
-        clear_inputs();
+        tick();
         #1;
+
         if (pau_wr_idx_o[0] !== COEFF_W'(40) || pau_wr_idx_o[1] !== COEFF_W'(41) ||
             pau_wr_idx_o[2] !== COEFF_W'(42) || pau_wr_idx_o[3] !== COEFF_W'(43))
             $fatal(1, "CMI INTT radix-2 writeback index reorder mismatch");
+        if (pau_wr_data_o[0] !== 16'h0100 || pau_wr_data_o[1] !== 16'h0300 ||
+            pau_wr_data_o[2] !== 16'h0200 || pau_wr_data_o[3] !== 16'h0400)
+            $fatal(1, "CMI INTT radix-2 writeback data reorder mismatch");
+
+        clear_inputs();
 
         // ------------------------------------------------------
         // 5) Ready mirrors downstream memory readiness
