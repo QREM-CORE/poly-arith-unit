@@ -17,7 +17,6 @@ rtl/cmi.sv
 
 # --- MAC Adder ---
 rtl/mac_pair_add.sv
-rtl/mac_adder.sv
 rtl/mac_row_accum.sv
 
 # --- Twiddle Factor Generation ---

@@ -14,9 +14,8 @@
  *   This helper intentionally keeps only the arithmetic:
  *     sum_lane = (acc_lane + cwm_lane) mod q
  *
- *   Keeping this block combinational makes it easier to reuse from:
- *     1. the legacy registered mac_adder wrapper, and
- *     2. the new mac_row_accum scratchpad-based accumulator.
+ *   Keeping this block combinational makes it easier to reuse from the
+ *   new mac_row_accum scratchpad-based accumulator.
  */
 
 `timescale 1ns / 1ps
