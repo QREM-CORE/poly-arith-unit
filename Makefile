@@ -1,5 +1,4 @@
 # Optional: Override defaults here
-SIM = verilator
 INCDIRS = +incdir+rtl +incdir+lib/common_rtl/rtl +incdir+verif/poly-mem-subsystem/rtl
 
 # Import the central build system
