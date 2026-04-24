@@ -150,10 +150,10 @@ module cmi #(
     logic [1:0]                aux_req_match;
     logic [3:0]                aux_rsp_match;
 
-    logic [3:0][$clog2(N)-1:0] wr_idx_pipe   [0:MAX_WB_LAT];
-    logic [3:0]                valid_pipe    [0:MAX_WB_LAT];
-    logic [1:0]                pass_idx_pipe [0:MAX_WB_LAT];
-    logic                      is_radix2_pipe [0:MAX_WB_LAT];
+    logic [3:0][$clog2(N)-1:0] wr_idx_pipe   [MAX_WB_LAT+1];
+    logic [3:0]                valid_pipe    [MAX_WB_LAT+1];
+    logic [1:0]                pass_idx_pipe [MAX_WB_LAT+1];
+    logic                      is_radix2_pipe [MAX_WB_LAT+1];
     logic [3:0][$clog2(N)-1:0] wr_idx_sel;
     logic [3:0]                coeff_valid_sel;
     logic [1:0]                pass_idx_sel;
