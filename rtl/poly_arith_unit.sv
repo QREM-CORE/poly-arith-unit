@@ -51,6 +51,9 @@ module poly_arith_unit #(
     // ---- Control Interface (From Main System) ----
     input  logic       start_i,
     input  pe_mode_e   op_type_i,
+    input  logic [$clog2(NUM_POLYS)-1:0] poly_id_i,
+    input  logic [$clog2(NUM_POLYS)-1:0] cwm_num_terms_i,
+    output logic       done_o,
 
     // ---- Memory Subsystem PAU Port ----
     output logic       pau_req_o,
@@ -90,9 +93,7 @@ module poly_arith_unit #(
     // Internal Signals
     // ==========================================
 
-    // If poly select is not exposed yet, default to poly 0.
     localparam int POLY_W = $clog2(NUM_POLYS);
-    localparam logic [POLY_W-1:0] DEFAULT_POLY_ID = '0;
 
     // NOTE(PAU/Mem): CWM now consumes the PAU auxiliary descriptor during the
     // accepted accumulation beats so the PE sees {A_hat[2p], A_hat[2p+1],
@@ -232,7 +233,8 @@ module poly_arith_unit #(
         .rst                (rst),
         .start_i            (start_i),
         .op_type_i          (op_type_i),
-        .poly_id_i          (DEFAULT_POLY_ID),
+        .poly_id_i          (poly_id_i),
+        .cwm_num_terms_i    (cwm_num_terms_i),
         .ready_o            (ctl_ready),
         .done_o             (ctl_done),
         .tf_start_o         (tf_start),
@@ -313,6 +315,8 @@ module poly_arith_unit #(
         .pau_aux_rd_lane_valid_i(pau_aux_rd_lane_valid_i),
         .pau_aux_rd_data_i      (pau_aux_rd_data_i)
     );
+
+    assign done_o = ctl_done;
 
     // ---- Twiddle Factor Address Generator ----
     tf_addr_gen u_tf_addr_gen (

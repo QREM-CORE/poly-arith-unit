@@ -48,6 +48,7 @@ module pau_controller #(
     input  logic             start_i,
     input  pe_mode_e         op_type_i,
     input  logic [$clog2(NUM_POLYS)-1:0] poly_id_i,
+    input  logic [$clog2(NUM_POLYS)-1:0] cwm_num_terms_i,
 
     output logic             ready_o,
     output logic             done_o,
@@ -97,7 +98,6 @@ module pau_controller #(
     localparam logic [8:0] COEFFS_PER_POLY      = 9'd256;
     localparam logic [7:0] COEFFS_PER_ISSUE     = 8'd4;
     localparam logic [6:0] CWM_PAIR_LAST        = 7'd127;
-    localparam logic [POLY_W-1:0] CWM_TERM_LAST  = POLY_W'(CWM_NUM_TERMS - 1);
 
     // Pass indices
     localparam logic [1:0] PASS_0               = 2'd0;
@@ -154,6 +154,7 @@ module pau_controller #(
     // =========================================================================
     pe_mode_e   op_r;
     logic [POLY_W-1:0] poly_id_r;
+    logic [POLY_W-1:0] cwm_num_terms_r;
     logic [1:0] pass_idx_r, pass_idx_n;
 
     // =========================================================================
@@ -210,6 +211,11 @@ module pau_controller #(
     logic [7:0] idx0, idx1, idx2, idx3;
     logic [7:0] base_idx;
     logic [7:0] stride;
+    logic [POLY_W-1:0] cwm_num_terms_eff_w;
+    logic [POLY_W-1:0] cwm_term_last_w;
+
+    assign cwm_num_terms_eff_w = (cwm_num_terms_r != '0) ? cwm_num_terms_r : POLY_W'(CWM_NUM_TERMS);
+    assign cwm_term_last_w     = (cwm_num_terms_eff_w != '0) ? (cwm_num_terms_eff_w - POLY_W'(1)) : '0;
 
     // =========================================================================
     // Pass configuration
@@ -563,7 +569,7 @@ module pau_controller #(
                         // phase that writes final t_hat back to memory.
                         if (issue_addr_r[6:0] == CWM_PAIR_LAST) begin
                             issue_addr_n = ZERO8;
-                            if (cwm_term_idx_r == CWM_TERM_LAST) begin
+                            if (cwm_term_idx_r == cwm_term_last_w) begin
                                 cwm_drain_idx_n = 7'd0;
                                 state_n         = S_DRAIN;
                             end else begin
@@ -648,6 +654,7 @@ module pau_controller #(
             state_r      <= S_IDLE;
             op_r         <= PE_MODE_NTT;
             poly_id_r    <= ZERO2;
+            cwm_num_terms_r <= '0;
             pass_idx_r   <= ZERO2;
             block_cnt_r  <= ZERO6;
             bf_cnt_r     <= ZERO6;
@@ -672,6 +679,7 @@ module pau_controller #(
             if (state_r == S_IDLE && start_i) begin
                 op_r         <= op_type_i;
                 poly_id_r    <= poly_id_i;
+                cwm_num_terms_r <= cwm_num_terms_i;
                 pass_idx_r   <= ZERO2;
                 block_cnt_r  <= ZERO6;
                 bf_cnt_r     <= ZERO6;

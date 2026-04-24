@@ -24,6 +24,9 @@ module poly_arith_unit_tb;
     logic       rst;
     logic       start_i;
     pe_mode_e   op_type_i;
+    logic [POLY_W-1:0] poly_id_i;
+    logic [POLY_W-1:0] cwm_num_terms_i;
+    logic       done_o;
 
     logic       pau_req_o;
     logic       pau_rd_en_o;
@@ -132,6 +135,9 @@ module poly_arith_unit_tb;
         .rst(rst),
         .start_i(start_i),
         .op_type_i(op_type_i),
+        .poly_id_i(poly_id_i),
+        .cwm_num_terms_i(cwm_num_terms_i),
+        .done_o(done_o),
         .pau_req_o(pau_req_o),
         .pau_rd_en_o(pau_rd_en_o),
         .pau_rd_poly_id_o(pau_rd_poly_id_o),
@@ -391,6 +397,8 @@ module poly_arith_unit_tb;
         rst       = 1'b1;
         start_i   = 1'b0;
         op_type_i = PE_MODE_INTT;
+        poly_id_i = '0;
+        cwm_num_terms_i = POLY_W'(CWM_NUM_TERMS);
         clear_other_clients();
         repeat (3) tick();
         expect_aux_safe();

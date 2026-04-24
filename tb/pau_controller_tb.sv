@@ -15,6 +15,7 @@ module pau_controller_tb;
     logic       start_i;
     pe_mode_e   op_type_i;
     logic [POLY_W-1:0] poly_id_i;
+    logic [POLY_W-1:0] cwm_num_terms_i;
 
     logic       ready_o;
     logic       done_o;
@@ -54,6 +55,7 @@ module pau_controller_tb;
         .start_i(start_i),
         .op_type_i(op_type_i),
         .poly_id_i(poly_id_i),
+        .cwm_num_terms_i(cwm_num_terms_i),
         .ready_o(ready_o),
         .done_o(done_o),
         .tf_start_o(tf_start_o),
@@ -99,6 +101,7 @@ module pau_controller_tb;
             start_i            = 1'b0;
             op_type_i          = PE_MODE_NTT;
             poly_id_i          = POLY_W'(3);
+            cwm_num_terms_i    = POLY_W'(CWM_NUM_TERMS);
             cmi_ready_i        = 1'b1;
             mac_drain_accept_i = 1'b1;
             repeat (3) @(posedge clk);

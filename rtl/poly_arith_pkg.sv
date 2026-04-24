@@ -1,14 +1,16 @@
 package poly_arith_pkg;
 
     import qrem_global_pkg::*;
-    export qrem_global_pkg::*;
 
-
-    // Explicitly reference to ensure wildcard import captures these for export
-    localparam _unused_q = Q;
-    typedef pe_mode_e _unused_pe_mode;
-
-
+    typedef enum logic [2:0] {
+        PE_MODE_IDLE   = 3'd0,
+        PE_MODE_NTT    = 3'd1,
+        PE_MODE_INTT   = 3'd2,
+        PE_MODE_CWM    = 3'd3,
+        PE_MODE_ADDSUB = 3'd4,
+        PE_MODE_COMP   = 3'd5,
+        PE_MODE_DECOMP = 3'd6
+    } pe_mode_e;
     // =========================================================================
     // 1. Bus & Interface Configuration (AXI4-Stream)
     // =========================================================================
