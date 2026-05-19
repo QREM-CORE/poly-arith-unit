@@ -47,10 +47,10 @@ module pe_unit_tb();
         coeff_t     z3;
         pe_mode_e   mode;
         logic       mode_sel;
-        string      name;
     } expected_result_t;
 
     expected_result_t expected_queue [$]; // FIFO Queue
+    string            name_queue [$];     // Parallel FIFO Queue for names
 
     // ------------------------------------------------------
     // DUT Instantiation
@@ -105,7 +105,6 @@ module pe_unit_tb();
         exp.z0 = 0; exp.z1 = 0; exp.z2 = 0; exp.z3 = 0;
         exp.mode = mode;
         exp.mode_sel = mode_sel;
-        exp.name = name;
 
         // =======================================================
         // GOLDEN MODEL ROUTING
@@ -239,6 +238,7 @@ module pe_unit_tb();
 
         // 2. Push expected result to queue
         expected_queue.push_back(exp);
+        name_queue.push_back(name);
 
         // 3. Drive Inputs
         @(posedge clk);
@@ -272,6 +272,8 @@ module pe_unit_tb();
             expected_result_t exp;
             logic match;
 
+            string exp_name;
+
             if (expected_queue.size() == 0) begin
                 $display("==================================================");
                 $display("[FATAL ERROR] valid_o is high, but expected_queue is empty!");
@@ -279,6 +281,7 @@ module pe_unit_tb();
                 error_count++;
             end else begin
                 exp = expected_queue.pop_front();
+                exp_name = name_queue.pop_front();
                 match = 1'b1; // Assume pass until proven otherwise
 
                 // Dynamic mode checking - Only check the ports active for the mode
@@ -292,7 +295,7 @@ module pe_unit_tb();
 
                 if (!match) begin
                     $display("==================================================");
-                    $display("[FAIL] %s", exp.name);
+                    $display("[FAIL] %s", exp_name);
                     $display("Mode: %s", exp.mode.name());
 
                     // CWM only evaluates Z1 and Z2. All other modes evaluate all 4 ports.
