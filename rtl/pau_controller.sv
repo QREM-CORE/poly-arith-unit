@@ -482,11 +482,6 @@ module pau_controller #(
 
             // -------------------------------------------------------------
             // Streaming / 4-coeff-per-cycle modes
-            //
-            // TODO(PAU, correctness): ADD/SUB requires two memory operands:
-            // X[0..3] and Y[0..3]. This index stream currently names only the
-            // primary/source-X vector. The matching Y vector must be issued on
-            // the PAU auxiliary Memory descriptor and routed into PE op_b.
             // -------------------------------------------------------------
             PE_MODE_COMP,
             PE_MODE_DECOMP,
@@ -508,10 +503,6 @@ module pau_controller #(
             // exposes the pair index schedule for the local scratch
             // accumulator, while the simple read index pattern below remains
             // a placeholder until the wider CWM memory path is finished.
-            //
-            // TODO(PAU, correctness): CWM accumulation should issue A_hat on
-            // one PAU Memory descriptor and s_hat on the other. The current
-            // lane-0/1 primary read does not prove the real KeyGen row flow.
             // -------------------------------------------------------------
             PE_MODE_CWM: begin
                 base_idx = {issue_addr_r[6:0], 1'b0}; // pair_idx * 2
@@ -736,10 +727,6 @@ module pau_controller #(
 
     // In CWM drain we read just the e_hat pair that will be fused with the
     // scratch accumulator output.
-    //
-    // TODO(PAU, correctness): Memory's fixed map keeps EI/e_hat separate from
-    // final T/t_hat slots. The writeback side must not rely on "overwrite
-    // e_hat in place" semantics for final row commit.
     assign cmi_coeff_idx_o[0] =
         ((state_r == S_DRAIN) && (op_r == PE_MODE_CWM)) ? {cwm_drain_idx_r, 1'b0} : idx0;
     assign cmi_coeff_idx_o[1] =

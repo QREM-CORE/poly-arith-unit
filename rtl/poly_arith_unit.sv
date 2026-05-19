@@ -421,8 +421,8 @@ module poly_arith_unit #(
         .mode_i             (is_radix2_pe),
         .op_a0_i            (coeff_from_cmi[0][COEFF_WIDTH-1:0]),
         .op_a1_i            (coeff_from_cmi[1][COEFF_WIDTH-1:0]),
-        .op_a2_i            (coeff_from_cmi[2][COEFF_WIDTH-1:0]),
-        .op_a3_i            (coeff_from_cmi[3][COEFF_WIDTH-1:0]),
+        .op_a2_i            ((pe_ctrl == PE_MODE_CWM) ? aux_coeff_from_cmi[0][COEFF_WIDTH-1:0] : coeff_from_cmi[2][COEFF_WIDTH-1:0]),
+        .op_a3_i            ((pe_ctrl == PE_MODE_CWM) ? aux_coeff_from_cmi[1][COEFF_WIDTH-1:0] : coeff_from_cmi[3][COEFF_WIDTH-1:0]),
         .op_b0_i            (pe_ctrl == PE_MODE_ADDSUB ? aux_coeff_from_cmi[0][COEFF_WIDTH-1:0] :
                              (is_cwm ? w0_cwm_aligned : w0)),
         .op_b1_i            (pe_ctrl == PE_MODE_ADDSUB ? aux_coeff_from_cmi[1][COEFF_WIDTH-1:0] : w1),
