@@ -158,14 +158,14 @@ module pe_unit_tb();
             // NTT Radix-2 Mathematical Definition
             // X0=a0, X1=a1, X2=a2, X3=a3
             // w_A=b0, 1=b1, w_B=b2, unused=b3
-            // U0 = X0 + w_A*X2
-            // V0 = X0 - w_A*X2
-            // U2 = X1*1 + X3*w_B
-            // V2 = X1*1 - X3*w_B
+            // U0 = X0 + w_A*X1
+            // V0 = X0 - w_A*X1
+            // U2 = X2*1 + X3*w_B
+            // V2 = X2*1 - X3*w_B
             // ---------------------------------------------------
 
-            coeff_t pe0_w_x2 = mod_mul(a2, b0);
-            coeff_t pe2_x1_1 = mod_mul(a1, b1);                     // a1 * 1
+            coeff_t pe0_w_x2 = mod_mul(a1, b0);
+            coeff_t pe2_x1_1 = mod_mul(a2, b1);                     // a2 * 1
             coeff_t pe2_w_x3 = mod_mul(a3, b2);
 
             exp.z0 = mod_add(a0, pe0_w_x2);                         // U0
