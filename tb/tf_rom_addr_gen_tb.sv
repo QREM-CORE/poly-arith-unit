@@ -488,19 +488,19 @@ module tf_rom_addr_gen_tb;
         @(negedge clk); // Cycle 1: addr_gen outputs addr=0
         @(negedge clk); // Cycle 2: ROM outputs registered value for addr=0
 
-        // R4NTT_ROM[0] = {17, 289, 1584}
-        // w0 = r4_w2 = 289 (Stage B), w1 = r4_w1 = 17 (Stage A top), w2 = r4_w3 = 1584 (Stage A bot)
+        // R4NTT_ROM[0] = {2580, 1729, 3289}
+        // w0 = r4_w2 = 1729 (Stage B), w1 = r4_w1 = 2580 (Stage A top), w2 = r4_w3 = 3289 (Stage A bot)
         total_tests += 4;
-        if (w0 !== 12'd289) begin
-            $error("NTT ROM: w0=%0d, expected=289 (r4_w2 from R4NTT_ROM[0])", w0);
+        if (w0 !== 12'd1729) begin
+            $error("NTT ROM: w0=%0d, expected=1729 (r4_w2 from R4NTT_ROM[0])", w0);
             errors++;
         end
-        if (w1 !== 12'd17) begin
-            $error("NTT ROM: w1=%0d, expected=17 (r4_w1 from R4NTT_ROM[0])", w1);
+        if (w1 !== 12'd2580) begin
+            $error("NTT ROM: w1=%0d, expected=2580 (r4_w1 from R4NTT_ROM[0])", w1);
             errors++;
         end
-        if (w2 !== 12'd1584) begin
-            $error("NTT ROM: w2=%0d, expected=1584 (r4_w3 from R4NTT_ROM[0])", w2);
+        if (w2 !== 12'd3289) begin
+            $error("NTT ROM: w2=%0d, expected=3289 (r4_w3 from R4NTT_ROM[0])", w2);
             errors++;
         end
         if (w3 !== 12'd1729) begin
@@ -509,7 +509,7 @@ module tf_rom_addr_gen_tb;
         end
         $display("  NTT R4[0]: w0=%0d w1=%0d w2=%0d w3=%0d %s",
                  w0, w1, w2, w3,
-                 (w0 == 289 && w1 == 17 && w2 == 1584 && w3 == 1729) ? "PASS" : "FAIL");
+                 (w0 == 1729 && w1 == 2580 && w2 == 3289 && w3 == 1729) ? "PASS" : "FAIL");
 
         // Let NTT run to completion
         advance = 1'b1;
@@ -530,19 +530,19 @@ module tf_rom_addr_gen_tb;
         @(negedge clk); // Cycle 1: addr_gen outputs addr
         @(negedge clk); // Cycle 2: ROM outputs registered value
 
-        // OMEGA_INV_ROM[0] = 800 = (2*OMEGA_ROM[0])^(-1)
-        // w0 = r2_data = 800, w1 = 1665 (INV_2_MOD_Q), w2 = r2_data = 800
+        // OMEGA_INV_ROM[0] = 2252
+        // w0 = r2_data = 2252, w1 = 1665 (INV_2_MOD_Q), w2 = r2_data = 2252
         total_tests += 4;
-        if (w0 !== 12'd800) begin
-            $error("INTT ROM R2: w0=%0d, expected=800 ((2*OMEGA_ROM[0])^(-1))", w0);
+        if (w0 !== 12'd2252) begin
+            $error("INTT ROM R2: w0=%0d, expected=2252", w0);
             errors++;
         end
         if (w1 !== 12'd1665) begin
             $error("INTT ROM R2: w1=%0d, expected=1665 (INV_2_MOD_Q for INTT R2)", w1);
             errors++;
         end
-        if (w2 !== 12'd800) begin
-            $error("INTT ROM R2: w2=%0d, expected=800 (same twiddle as w0)", w2);
+        if (w2 !== 12'd2252) begin
+            $error("INTT ROM R2: w2=%0d, expected=2252 (same twiddle as w0)", w2);
             errors++;
         end
         if (w3 !== 12'd1729) begin
@@ -551,7 +551,7 @@ module tf_rom_addr_gen_tb;
         end
         $display("  INTT R2[0]: w0=%0d w1=%0d w2=%0d w3=%0d %s",
                  w0, w1, w2, w3,
-                 (w0 == 800 && w1 == 1665 && w2 == 800 && w3 == 1729) ? "PASS" : "FAIL");
+                 (w0 == 2252 && w1 == 1665 && w2 == 2252 && w3 == 1729) ? "PASS" : "FAIL");
 
         // Let INTT run to completion
         advance = 1'b1;
