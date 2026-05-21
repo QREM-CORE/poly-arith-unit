@@ -39,7 +39,7 @@
  *   - Writes are allowed even when no new read is being issued.
  */
 
-import qrem_mem_map_pkg::*;
+import poly_arith_pkg::*;
 
 module cmi #(
     parameter int N          = 256,
