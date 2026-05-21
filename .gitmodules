@@ -4,9 +4,6 @@
 [submodule "build-tools"]
 	path = build-tools
 	url = ../build-tools.git
-[submodule "Memory/poly-mem-subsystem"]
-	path = verif/poly-mem-subsystem
-	url = ../poly-mem-subsystem
 [submodule "verif/mlkem-python"]
 	path = verif/mlkem-python
 	url = ../mlkem-python.git
