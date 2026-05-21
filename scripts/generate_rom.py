@@ -1,5 +1,21 @@
-# Script to generate correct, bit-reversed twiddle factor tables for tf_rom.sv
-# Derived from FIPS 203 standard definitions.
+"""
+================================================================================
+SCRIPT: Kyber/ML-KEM Radix-4 Twiddle Factor ROM Generator
+AUTHOR: Kiet Le
+PURPOSE:
+    Generates bit-reversed, packed twiddle factor entries for the Radix-4
+    stages in tf_rom.sv, ensuring compatibility with FIPS 203 standard.
+
+ALGORITHMIC FLOW:
+    1. Computes Bit-Reversal: Permutes indices using bit-reversal for 7 bits.
+    2. Calculates Zetas: Powers of the 256-th root of unity (17) mod 3329.
+    3. Formats Output: Groups twiddles into `{w1, w2, w3}` triplets for
+       R4NTT_ROM and R4INTT_ROM arrays in SystemVerilog syntax.
+
+USAGE:
+    python3 scripts/generate_rom.py
+================================================================================
+"""
 
 Q = 3329
 
