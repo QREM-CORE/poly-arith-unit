@@ -43,10 +43,13 @@ module pe0_tb();
         coeff_t     u;
         coeff_t     v;
         pe_mode_e   mode;
-        string      name;
     } expected_result_t;
 
     expected_result_t expected_queue [$]; // FIFO Queue
+    string            expected_name_queue [$];
+
+    expected_result_t exp_mon;
+    string            exp_name_mon;
 
     // ------------------------------------------------------
     // DUT Instantiation
@@ -132,10 +135,10 @@ module pe0_tb();
         end
 
         exp.mode = mode;
-        exp.name = name;
 
         // 2. Push expected result to queue
         expected_queue.push_back(exp);
+        expected_name_queue.push_back(name);
 
         // 3. Drive Inputs (1 clock cycle)
         @(posedge clk);
@@ -168,8 +171,6 @@ module pe0_tb();
     // ------------------------------------------------------
     always @(posedge clk) begin
         if (valid_o) begin
-            expected_result_t exp;
-
             if (expected_queue.size() == 0) begin
                 $display("==================================================");
                 $display("[FATAL ERROR] valid_o is high, but expected_queue is empty! (Ghost Pulse)");
@@ -177,14 +178,15 @@ module pe0_tb();
                 error_count++;
             end else begin
                 // Pop the oldest expected result
-                exp = expected_queue.pop_front();
+                exp_mon = expected_queue.pop_front();
+                exp_name_mon = expected_name_queue.pop_front();
 
-                if (u0_o !== exp.u || v0_o !== exp.v) begin
+                if (u0_o !== exp_mon.u || v0_o !== exp_mon.v) begin
                     $display("==================================================");
-                    $display("[FAIL] %s", exp.name);
-                    $display("Mode: %s", exp.mode.name());
-                    if (u0_o !== exp.u) $display("   U-Mismatch! Exp: %0d, Got: %0d", exp.u, u0_o);
-                    if (v0_o !== exp.v) $display("   V-Mismatch! Exp: %0d, Got: %0d", exp.v, v0_o);
+                    $display("[FAIL] %s", exp_name_mon);
+                    $display("Mode: %s", exp_mon.mode.name());
+                    if (u0_o !== exp_mon.u) $display("   U-Mismatch! Exp: %0d, Got: %0d", exp_mon.u, u0_o);
+                    if (v0_o !== exp_mon.v) $display("   V-Mismatch! Exp: %0d, Got: %0d", exp_mon.v, v0_o);
                     $display("==================================================");
                     error_count++;
                 end else begin
