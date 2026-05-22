@@ -357,6 +357,48 @@ module poly_arith_unit_tb;
         repeat (10) @(posedge clk);
 
         // ----------------------------------------------------------------
+        // Test 3: INTT Random
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 3: INTT (Random) ===");
+        clear_result_mem();
+        $readmemh("verif/vectors/k2/intt_in.mem",  coeff_mem);
+        $readmemh("verif/vectors/k2/intt_out.mem", expected);
+
+        run_pau(PE_MODE_INTT);
+
+        mismatches = compare_results("INTT_RANDOM");
+        if (mismatches == 0) begin
+            $display("[PASS] INTT Random: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] INTT Random: %0d coefficient mismatches.", mismatches);
+            total_fail++;
+        end
+
+        repeat (10) @(posedge clk);
+
+        // ----------------------------------------------------------------
+        // Test 4: INTT Boundary (all q-1)
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 4: INTT (Boundary: all q-1) ===");
+        clear_result_mem();
+        $readmemh("verif/vectors/k2/intt_max_in.mem",  coeff_mem);
+        $readmemh("verif/vectors/k2/intt_max_out.mem", expected);
+
+        run_pau(PE_MODE_INTT);
+
+        mismatches = compare_results("INTT_MAX");
+        if (mismatches == 0) begin
+            $display("[PASS] INTT Boundary: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] INTT Boundary: %0d coefficient mismatches.", mismatches);
+            total_fail++;
+        end
+
+        repeat (10) @(posedge clk);
+
+        // ----------------------------------------------------------------
         // Summary
         // ----------------------------------------------------------------
         $display("\n==================================================");

@@ -37,6 +37,12 @@ def gen_intt_vectors(k_dir):
     write_mem(f"{k_dir}/intt_in.mem", f_hat)
     write_mem(f"{k_dir}/intt_out.mem", f)
 
+    # Boundary (Max)
+    f_max_hat = [q-1] * 256
+    f_max = NTT_inv(f_max_hat)
+    write_mem(f"{k_dir}/intt_max_in.mem", f_max_hat)
+    write_mem(f"{k_dir}/intt_max_out.mem", f_max)
+
 def gen_addsub_vectors(k_dir):
     a = [random.randint(0, q-1) for _ in range(256)]
     b = [random.randint(0, q-1) for _ in range(256)]
