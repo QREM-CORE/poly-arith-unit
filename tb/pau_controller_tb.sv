@@ -42,21 +42,32 @@ module pau_controller_tb;
     logic [5:0] block_cnt_o;
     logic [5:0] bf_cnt_o;
 
+    logic [POLY_W-1:0] aux_poly_id_i;
+    logic [POLY_W-1:0] cwm_num_terms_i;
+    logic tf_step_o;
+    logic pass_is_radix2_o;
+    logic [POLY_W-1:0] cmi_aux_poly_id_o;
+    logic cmi_aux_v_o;
+    logic cmi_aux_rd_en_o;
+
     integer pass_count = 0;
     integer fail_count = 0;
 
     pau_controller #(
-        .NUM_POLYS(NUM_POLYS),
-        .CWM_NUM_TERMS(CWM_NUM_TERMS)
+        .NUM_POLYS(NUM_POLYS)
     ) dut (
         .clk(clk),
         .rst(rst),
         .start_i(start_i),
         .op_type_i(op_type_i),
         .poly_id_i(poly_id_i),
+        .aux_poly_id_i(aux_poly_id_i),
+        .cwm_num_terms_i(cwm_num_terms_i),
         .ready_o(ready_o),
         .done_o(done_o),
         .tf_start_o(tf_start_o),
+        .tf_step_o(tf_step_o),
+        .pass_is_radix2_o(pass_is_radix2_o),
         .pass_idx_o(pass_idx_o),
         .pe_ctrl_o(pe_ctrl_o),
         .pe_valid_o(pe_valid_o),
@@ -71,9 +82,12 @@ module pau_controller_tb;
         .cmi_v_o(cmi_v_o),
         .cmi_rd_en_o(cmi_rd_en_o),
         .cmi_poly_id_o(cmi_poly_id_o),
+        .cmi_aux_poly_id_o(cmi_aux_poly_id_o),
         .cmi_coeff_idx_o(cmi_coeff_idx_o),
         .cmi_coeff_valid_o(cmi_coeff_valid_o),
         .cmi_wb_latency_o(cmi_wb_latency_o),
+        .cmi_aux_v_o(cmi_aux_v_o),
+        .cmi_aux_rd_en_o(cmi_aux_rd_en_o),
         .block_cnt_o(block_cnt_o),
         .bf_cnt_o(bf_cnt_o)
     );
@@ -99,6 +113,8 @@ module pau_controller_tb;
             start_i            = 1'b0;
             op_type_i          = PE_MODE_NTT;
             poly_id_i          = POLY_W'(3);
+            aux_poly_id_i      = POLY_W'(4);
+            cwm_num_terms_i    = POLY_W'(3);
             cmi_ready_i        = 1'b1;
             mac_drain_accept_i = 1'b1;
             repeat (3) @(posedge clk);

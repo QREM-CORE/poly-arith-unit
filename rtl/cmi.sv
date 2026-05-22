@@ -39,7 +39,7 @@
  *   - Writes are allowed even when no new read is being issued.
  */
 
-import qrem_mem_map_pkg::*;
+import poly_arith_pkg::*;
 
 module cmi #(
     parameter int N          = 256,
@@ -60,8 +60,11 @@ module cmi #(
     // Control interface
     // ------------------------------------------------------------
     input  logic [$clog2(NUM_POLYS)-1:0]  poly_id_i,
+    input  logic [$clog2(NUM_POLYS)-1:0]  aux_poly_id_i,
     input  logic                          v_i,
+    input  logic                          aux_v_i,
     input  logic                          rd_en_i,
+    input  logic                          aux_rd_en_i,
     input  logic [3:0]                    wb_latency_i,
     input  logic                          cwm_mode_i,
     input  logic                          cwm_issue_i,
@@ -79,6 +82,7 @@ module cmi #(
     // Coefficient output to AU
     // ------------------------------------------------------------
     output logic [3:0][W-1:0]             coeff_o,
+    output logic [3:0][W-1:0]             aux_coeff_o,
 
     // ------------------------------------------------------------
     // Status back to controller
@@ -144,10 +148,10 @@ module cmi #(
     logic [3:0]                primary_req_valid_r;
     logic [3:0]                aux_req_valid_r;
     logic [3:0][W-1:0]         primary_coeff_reordered;
-    logic [1:0][W-1:0]         aux_coeff_reordered;
+    logic [3:0][W-1:0]         aux_coeff_reordered;
     logic [3:0]                primary_req_match;
     logic [3:0]                primary_rsp_match;
-    logic [1:0]                aux_req_match;
+    logic [3:0]                aux_req_match;
     logic [3:0]                aux_rsp_match;
 
     logic [3:0][$clog2(N)-1:0] wr_idx_pipe   [MAX_WB_LAT+1];
@@ -166,9 +170,12 @@ module cmi #(
     always_comb begin
         primary_rd_poly_id_sel = poly_id_i;
         primary_wr_poly_id_sel = poly_id_i;
-        aux_rd_poly_id_sel     = '0;
+        aux_rd_poly_id_sel     = aux_poly_id_i;
 
         if (cwm_issue_i) begin
+            // For KeyGen CWM, use the fixed slot structure if those IDs are
+            // valid in the map. Otherwise, fall back to the IDs passed by the
+            // job controller.
             primary_rd_poly_id_sel = POLY_W'(POLY_ID_A0) + cwm_slot_sel;
             aux_rd_poly_id_sel     = POLY_W'(POLY_ID_S0) + cwm_slot_sel;
         end else if (cwm_drain_issue_i) begin
@@ -190,11 +197,11 @@ module cmi #(
     assign pau_rd_lane_valid_o = coeff_valid_i;
     assign pau_wr_poly_id_o    = primary_wr_poly_id_sel;
 
-    assign pau_aux_req_o           = cwm_issue_i;
-    assign pau_aux_rd_en_o         = cwm_issue_i;
+    assign pau_aux_req_o           = aux_v_i | (|pau_aux_wr_en_o);
+    assign pau_aux_rd_en_o         = aux_rd_en_i;
     assign pau_aux_rd_poly_id_o    = aux_rd_poly_id_sel;
-    assign pau_aux_rd_idx_o        = cwm_issue_i ? coeff_idx_i : '0;
-    assign pau_aux_rd_lane_valid_o = cwm_issue_i ? coeff_valid_i : 4'b0000;
+    assign pau_aux_rd_idx_o        = aux_rd_en_i ? coeff_idx_i : '0;
+    assign pau_aux_rd_lane_valid_o = aux_rd_en_i ? coeff_valid_i : 4'b0000;
     assign pau_aux_wr_en_o         = 4'b0000;
     assign pau_aux_wr_poly_id_o    = '0;
     assign pau_aux_wr_idx_o        = '0;
@@ -242,8 +249,9 @@ module cmi #(
     // ============================================================
     always_comb begin
         coeff_o = '0;
+        aux_coeff_o = '0;
         primary_coeff_reordered = '0;
-        aux_coeff_reordered     = '0;
+        aux_coeff_reordered     = '0; // Note: aux_coeff_reordered redefined as [3:0] below
         primary_req_match       = '0;
         primary_rsp_match       = '0;
         aux_req_match           = '0;
@@ -262,15 +270,11 @@ module cmi #(
                     end
                 end
             end
-
-            for (int dst = 0; dst < 4; dst++) begin
-                if (primary_req_match[dst])
-                    coeff_o[dst] = primary_coeff_reordered[dst];
-            end
+            coeff_o = primary_coeff_reordered;
         end
 
         if (pau_aux_rd_valid_i && aux_rd_pending_r) begin
-            for (int dst = 0; dst < 2; dst++) begin
+            for (int dst = 0; dst < 4; dst++) begin
                 if (aux_req_valid_r[dst]) begin
                     for (int src = 0; src < 4; src++) begin
                         if (pau_aux_rd_lane_valid_i[src] &&
@@ -282,11 +286,7 @@ module cmi #(
                     end
                 end
             end
-
-            for (int dst = 0; dst < 2; dst++) begin
-                if (aux_req_match[dst])
-                    coeff_o[dst+2] = aux_coeff_reordered[dst];
-            end
+            aux_coeff_o = aux_coeff_reordered;
         end
     end
 

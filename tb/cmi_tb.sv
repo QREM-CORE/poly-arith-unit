@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-import qrem_mem_map_pkg::*;
+import poly_arith_pkg::*;
 import qrem_global_pkg::*;
 
 module cmi_tb;
@@ -19,6 +19,9 @@ module cmi_tb;
     logic [POLY_W-1:0]         poly_id_i;
     logic                      v_i;
     logic                      rd_en_i;
+    logic                      aux_rd_en_i;
+    logic                      aux_v_i;
+    logic [POLY_W-1:0]         aux_poly_id_i;
     logic [3:0]                wb_latency_i;
     logic                      cwm_mode_i;
     logic                      cwm_issue_i;
@@ -28,6 +31,7 @@ module cmi_tb;
     logic [3:0]                wr_en_i;
     logic [3:0][W-1:0]         wr_data_i;
     logic [3:0][W-1:0]         coeff_o;
+    logic [3:0][W-1:0]         aux_coeff_o;
     logic                      ready_o;
 
     logic                      pau_req_o;
@@ -71,8 +75,11 @@ module cmi_tb;
         .coeff_idx_i(coeff_idx_i),
         .coeff_valid_i(coeff_valid_i),
         .poly_id_i(poly_id_i),
+        .aux_poly_id_i(aux_poly_id_i),
         .v_i(v_i),
+        .aux_v_i(aux_v_i),
         .rd_en_i(rd_en_i),
+        .aux_rd_en_i(aux_rd_en_i),
         .wb_latency_i(wb_latency_i),
         .cwm_mode_i(cwm_mode_i),
         .cwm_issue_i(cwm_issue_i),
@@ -82,6 +89,7 @@ module cmi_tb;
         .wr_en_i(wr_en_i),
         .wr_data_i(wr_data_i),
         .coeff_o(coeff_o),
+        .aux_coeff_o(aux_coeff_o),
         .ready_o(ready_o),
         .pau_req_o(pau_req_o),
         .pau_rd_en_o(pau_rd_en_o),
@@ -137,6 +145,9 @@ module cmi_tb;
             cwm_drain_issue_i   = 1'b0;
             pass_idx_i          = '0;
             is_radix2_i         = 1'b0;
+            aux_rd_en_i         = 1'b0;
+            aux_v_i             = 1'b0;
+            aux_poly_id_i       = '0;
             wr_en_i             = '0;
             wr_data_i           = '0;
             pau_rd_valid_i      = 1'b0;
@@ -219,6 +230,8 @@ module cmi_tb;
         poly_id_i           = '0;
         v_i                 = 1'b1;
         rd_en_i             = 1'b1;
+        aux_v_i             = 1'b1;
+        aux_rd_en_i         = 1'b1;
         cwm_mode_i          = 1'b1;
         cwm_issue_i         = 1'b1;
         coeff_idx_i[0]      = COEFF_W'(20);
@@ -243,7 +256,7 @@ module cmi_tb;
         pau_aux_rd_data_i[1]    = 16'hB0B0;
         #1;
         if (coeff_o[0] !== 16'hA0A0 || coeff_o[1] !== 16'hA1A1 ||
-            coeff_o[2] !== 16'hB0B0 || coeff_o[3] !== 16'hB1B1)
+            aux_coeff_o[0] !== 16'hB0B0 || aux_coeff_o[1] !== 16'hB1B1)
             $fatal(1, "CMI CWM primary/aux response reorder mismatch");
         tick();
         clear_inputs();

@@ -380,15 +380,15 @@ module pe_unit (
                     pe0_valid_i = valid_i;
                     pe2_valid_i = valid_i;
 
-                    // PE0 Routing
-                    pe0_a0_i = op_a0_i;
-                    pe0_b0_i = op_a2_i;
+                    // PE0 Routing (Interleaved read lanes: X0, X2 mapped to op_a0, op_a1)
+                    pe0_a0_i = op_a0_i;   // X0
+                    pe0_b0_i = op_a1_i;   // X2
                     pe0_w0_i = op_b0_i;
 
-                    // PE2 Routing
-                    pe2_a2_i = op_a1_i;
-                    pe2_b2_i = op_a3_i;
-                    pe2_w1_i = op_b1_i; // Driven to 1
+                    // PE2 Routing (Interleaved read lanes: X1, X3 mapped to op_a2, op_a3)
+                    pe2_a2_i = op_a2_i;   // X1
+                    pe2_b2_i = op_a3_i;   // X3
+                    pe2_w1_i = op_b1_i;   // Driven to 1
                     pe2_w2_i = op_b2_i;
 
                     // Direct Outputs

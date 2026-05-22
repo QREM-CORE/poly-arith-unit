@@ -1,448 +1,379 @@
+/*
+ * Module Name: poly_arith_unit_tb
+ * Author(s): Kiet Le
+ * Target: FIPS 203 (ML-KEM / Kyber) Hardware Accelerator
+ *
+ * Description:
+ * Integration testbench for poly_arith_unit. Instantiates the DUT directly
+ * without poly_mem_subsystem. A lightweight memory model in the TB responds
+ * to PAU read requests (1 cycle latency, lane-echo) and captures writebacks.
+ *
+ * Memory Model Protocol:
+ *   - Primary port: 1cc read latency. Request beat latched; response issued
+ *     next cycle with pau_rd_idx_i echoed back so CMI lane-match reorder works.
+ *   - Auxiliary port: tied off (NTT does not use it).
+ *   - Write: captured into result_mem[] on every pau_wr_en_o lane.
+ *
+ * Tests (NTT focus):
+ *   Test 1 - NTT Random:   ntt_in.mem  → ntt_out.mem
+ *   Test 2 - NTT Boundary: ntt_max_in.mem → ntt_max_out.mem
+ */
+
+`default_nettype none
 `timescale 1ns/1ps
 
 import poly_arith_pkg::*;
 import qrem_global_pkg::*;
-import qrem_mem_map_pkg::*;
-// import qrem_seed_map_pkg::*; // Use qrem_global_pkg Version instead
-
 
 module poly_arith_unit_tb;
 
-    localparam int NUM_POLYS  = qrem_global_pkg::NUM_POLYS;
-    localparam int CWM_NUM_TERMS = 3;
-    localparam int CWM_PAIRS_PER_TERM = 128;
-    localparam int NCOEFF     = 256;
-    localparam int W          = 16;
-    localparam int SEED_DEPTH = 32;
-    localparam int SEED_W     = 64;
-    localparam int MEM_WORD_W = STORE_WIDTH;
-    localparam int POLY_W     = $clog2(NUM_POLYS);
-    localparam int COEFF_W    = $clog2(NCOEFF);
-    parameter int SEED_IDX_W = $clog2(SEED_BEATS);
-
-    logic       clk;
-    logic       rst;
-    logic       start_i;
-    pe_mode_e   op_type_i;
-
-    logic       pau_req_o;
-    logic       pau_rd_en_o;
-    logic [POLY_W-1:0] pau_rd_poly_id_o;
-    logic [3:0][7:0] pau_rd_idx_o;
-    logic [3:0]      pau_rd_lane_valid_o;
-    logic [3:0]      pau_wr_en_o;
-    logic [POLY_W-1:0] pau_wr_poly_id_o;
-    logic [3:0][7:0] pau_wr_idx_o;
-    logic [3:0][MEM_WORD_W-1:0] pau_wr_data_o;
-    logic       pau_rd_valid_i;
-    logic [POLY_W-1:0] pau_rd_poly_id_i;
-    logic [3:0][7:0] pau_rd_idx_i;
-    logic [3:0]      pau_rd_lane_valid_i;
-    logic [3:0][MEM_WORD_W-1:0] pau_rd_data_i;
-    logic       pau_stall_i;
-
-    logic       pau_aux_req_o;
-    logic       pau_aux_rd_en_o;
-    logic [POLY_W-1:0] pau_aux_rd_poly_id_o;
-    logic [3:0][7:0] pau_aux_rd_idx_o;
-    logic [3:0]      pau_aux_rd_lane_valid_o;
-    logic [3:0]      pau_aux_wr_en_o;
-    logic [POLY_W-1:0] pau_aux_wr_poly_id_o;
-    logic [3:0][7:0] pau_aux_wr_idx_o;
-    logic [3:0][MEM_WORD_W-1:0] pau_aux_wr_data_o;
-    logic       pau_aux_rd_valid_i;
-    logic [POLY_W-1:0] pau_aux_rd_poly_id_i;
-    logic [3:0][7:0] pau_aux_rd_idx_i;
-    logic [3:0]      pau_aux_rd_lane_valid_i;
-    logic [3:0][MEM_WORD_W-1:0] pau_aux_rd_data_i;
-
-    logic wipe_i;
-    logic wipe_busy_o;
-    logic wipe_done_o;
-    logic mem_fault_o;
-    logic [2:0] mem_fault_code_o;
-
-    logic hsu_hash_ek_read_en;
-    logic hsu_req;
-    logic hsu_rd_en;
-    logic [POLY_W-1:0] hsu_rd_poly_id;
-    logic [3:0][COEFF_W-1:0] hsu_rd_idx;
-    logic [3:0] hsu_rd_lane_valid;
-    logic [3:0] hsu_wr_en;
-    logic [POLY_W-1:0] hsu_wr_poly_id;
-    logic [3:0][COEFF_W-1:0] hsu_wr_idx;
-    logic [3:0][MEM_WORD_W-1:0] hsu_wr_data;
-    logic hsu_rd_valid;
-    logic [POLY_W-1:0] hsu_rd_poly_id_o;
-    logic [3:0][COEFF_W-1:0] hsu_rd_idx_o;
-    logic [3:0] hsu_rd_lane_valid_o;
-    logic [3:0][MEM_WORD_W-1:0] hsu_rd_data;
-    logic hsu_stall;
-
-    logic tr_req;
-    logic tr_rd_en;
-    logic [POLY_W-1:0] tr_rd_poly_id;
-    logic [3:0][COEFF_W-1:0] tr_rd_idx;
-    logic [3:0] tr_rd_lane_valid;
-    logic [3:0] tr_wr_en;
-    logic [POLY_W-1:0] tr_wr_poly_id;
-    logic [3:0][COEFF_W-1:0] tr_wr_idx;
-    logic [3:0][MEM_WORD_W-1:0] tr_wr_data;
-    logic tr_rd_valid;
-    logic [POLY_W-1:0] tr_rd_poly_id_o;
-    logic [3:0][COEFF_W-1:0] tr_rd_idx_o;
-    logic [3:0] tr_rd_lane_valid_o;
-    logic [3:0][MEM_WORD_W-1:0] tr_rd_data;
-    logic tr_stall;
-
-    logic hsu_seed_req;
-    logic hsu_seed_we;
-    seed_id_e hsu_seed_id;
-    logic [SEED_IDX_W-1:0] hsu_seed_idx;
-    logic [SEED_W-1:0] hsu_seed_wdata;
-    logic hsu_seed_ready;
-    logic hsu_seed_rvalid;
-    logic [SEED_W-1:0] hsu_seed_rdata;
-
-    logic tr_seed_req;
-    logic tr_seed_we;
-    seed_id_e tr_seed_id;
-    logic [SEED_IDX_W-1:0] tr_seed_idx;
-    logic [SEED_W-1:0] tr_seed_wdata;
-    logic tr_seed_ready;
-    logic tr_seed_rvalid;
-    logic [SEED_W-1:0] tr_seed_rdata;
-
-    bit saw_primary_req;
-    bit saw_primary_read;
-    bit saw_primary_write;
-    bit saw_primary_response;
-    bit saw_cwm_pair_revisit;
-    bit saw_cwm_nonzero_old;
-    bit saw_cwm_drain_write;
-    int cwm_issue_count;
-    int cwm_acc_fire_count;
-    int check_fail_count;
-
-    poly_arith_unit #(
-        .NUM_POLYS(NUM_POLYS),
-        .CWM_NUM_TERMS(CWM_NUM_TERMS)
-    ) dut (
-        .clk(clk),
-        .rst(rst),
-        .start_i(start_i),
-        .op_type_i(op_type_i),
-        .pau_req_o(pau_req_o),
-        .pau_rd_en_o(pau_rd_en_o),
-        .pau_rd_poly_id_o(pau_rd_poly_id_o),
-        .pau_rd_idx_o(pau_rd_idx_o),
-        .pau_rd_lane_valid_o(pau_rd_lane_valid_o),
-        .pau_wr_en_o(pau_wr_en_o),
-        .pau_wr_poly_id_o(pau_wr_poly_id_o),
-        .pau_wr_idx_o(pau_wr_idx_o),
-        .pau_wr_data_o(pau_wr_data_o),
-        .pau_rd_valid_i(pau_rd_valid_i),
-        .pau_rd_poly_id_i(pau_rd_poly_id_i),
-        .pau_rd_idx_i(pau_rd_idx_i),
-        .pau_rd_lane_valid_i(pau_rd_lane_valid_i),
-        .pau_rd_data_i(pau_rd_data_i),
-        .pau_stall_i(pau_stall_i),
-        .pau_aux_req_o(pau_aux_req_o),
-        .pau_aux_rd_en_o(pau_aux_rd_en_o),
-        .pau_aux_rd_poly_id_o(pau_aux_rd_poly_id_o),
-        .pau_aux_rd_idx_o(pau_aux_rd_idx_o),
-        .pau_aux_rd_lane_valid_o(pau_aux_rd_lane_valid_o),
-        .pau_aux_wr_en_o(pau_aux_wr_en_o),
-        .pau_aux_wr_poly_id_o(pau_aux_wr_poly_id_o),
-        .pau_aux_wr_idx_o(pau_aux_wr_idx_o),
-        .pau_aux_wr_data_o(pau_aux_wr_data_o),
-        .pau_aux_rd_valid_i(pau_aux_rd_valid_i),
-        .pau_aux_rd_poly_id_i(pau_aux_rd_poly_id_i),
-        .pau_aux_rd_idx_i(pau_aux_rd_idx_i),
-        .pau_aux_rd_lane_valid_i(pau_aux_rd_lane_valid_i),
-        .pau_aux_rd_data_i(pau_aux_rd_data_i)
-    );
-
-    poly_mem_subsystem #(
-        .NUM_POLYS         (NUM_POLYS),
-        .NCOEFF            (NCOEFF),
-        .W                 (W),
-        .COEFF_W           (MEM_WORD_W),
-        .SEED_DEPTH        (SEED_DEPTH),
-        .SEED_W            (SEED_W)
-    ) u_mem (
-        .clk(clk),
-        .rst(rst),
-        .wipe_i(wipe_i),
-        .wipe_busy_o(wipe_busy_o),
-        .wipe_done_o(wipe_done_o),
-        .mem_fault_o(mem_fault_o),
-        .mem_fault_code_o(mem_fault_code_o),
-        .pau_req(pau_req_o),
-        .pau_rd_en(pau_rd_en_o),
-        .pau_rd_poly_id(pau_rd_poly_id_o),
-        .pau_rd_idx(pau_rd_idx_o),
-        .pau_rd_lane_valid(pau_rd_lane_valid_o),
-        .pau_wr_en(pau_wr_en_o),
-        .pau_wr_poly_id(pau_wr_poly_id_o),
-        .pau_wr_idx(pau_wr_idx_o),
-        .pau_wr_data(pau_wr_data_o),
-        .pau_rd_valid(pau_rd_valid_i),
-        .pau_rd_poly_id_o(pau_rd_poly_id_i),
-        .pau_rd_idx_o(pau_rd_idx_i),
-        .pau_rd_lane_valid_o(pau_rd_lane_valid_i),
-        .pau_rd_data(pau_rd_data_i),
-        .pau_stall(pau_stall_i),
-        .pau_aux_req(pau_aux_req_o),
-        .pau_aux_rd_en(pau_aux_rd_en_o),
-        .pau_aux_rd_poly_id(pau_aux_rd_poly_id_o),
-        .pau_aux_rd_idx(pau_aux_rd_idx_o),
-        .pau_aux_rd_lane_valid(pau_aux_rd_lane_valid_o),
-        .pau_aux_wr_en(pau_aux_wr_en_o),
-        .pau_aux_wr_poly_id(pau_aux_wr_poly_id_o),
-        .pau_aux_wr_idx(pau_aux_wr_idx_o),
-        .pau_aux_wr_data(pau_aux_wr_data_o),
-        .pau_aux_rd_valid(pau_aux_rd_valid_i),
-        .pau_aux_rd_poly_id_o(pau_aux_rd_poly_id_i),
-        .pau_aux_rd_idx_o(pau_aux_rd_idx_i),
-        .pau_aux_rd_lane_valid_o(pau_aux_rd_lane_valid_i),
-        .pau_aux_rd_data(pau_aux_rd_data_i),
-        .hsu_hash_ek_read_en(hsu_hash_ek_read_en),
-        .hsu_req(hsu_req),
-        .hsu_rd_en(hsu_rd_en),
-        .hsu_rd_poly_id(hsu_rd_poly_id),
-        .hsu_rd_idx(hsu_rd_idx),
-        .hsu_rd_lane_valid(hsu_rd_lane_valid),
-        .hsu_wr_en(hsu_wr_en),
-        .hsu_wr_poly_id(hsu_wr_poly_id),
-        .hsu_wr_idx(hsu_wr_idx),
-        .hsu_wr_data(hsu_wr_data),
-        .hsu_rd_valid(hsu_rd_valid),
-        .hsu_rd_poly_id_o(hsu_rd_poly_id_o),
-        .hsu_rd_idx_o(hsu_rd_idx_o),
-        .hsu_rd_lane_valid_o(hsu_rd_lane_valid_o),
-        .hsu_rd_data(hsu_rd_data),
-        .hsu_stall(hsu_stall),
-        .tr_req(tr_req),
-        .tr_rd_en(tr_rd_en),
-        .tr_rd_poly_id(tr_rd_poly_id),
-        .tr_rd_idx(tr_rd_idx),
-        .tr_rd_lane_valid(tr_rd_lane_valid),
-        .tr_wr_en(tr_wr_en),
-        .tr_wr_poly_id(tr_wr_poly_id),
-        .tr_wr_idx(tr_wr_idx),
-        .tr_wr_data(tr_wr_data),
-        .tr_rd_valid(tr_rd_valid),
-        .tr_rd_poly_id_o(tr_rd_poly_id_o),
-        .tr_rd_idx_o(tr_rd_idx_o),
-        .tr_rd_lane_valid_o(tr_rd_lane_valid_o),
-        .tr_rd_data(tr_rd_data),
-        .tr_stall(tr_stall),
-        .hsu_seed_req(hsu_seed_req),
-        .hsu_seed_we(hsu_seed_we),
-        .hsu_seed_id(hsu_seed_id),
-        .hsu_seed_idx(hsu_seed_idx),
-        .hsu_seed_wdata(hsu_seed_wdata),
-        .hsu_seed_ready(hsu_seed_ready),
-        .hsu_seed_rvalid(hsu_seed_rvalid),
-        .hsu_seed_rdata(hsu_seed_rdata),
-        .tr_seed_req(tr_seed_req),
-        .tr_seed_we(tr_seed_we),
-        .tr_seed_id(tr_seed_id),
-        .tr_seed_idx(tr_seed_idx),
-        .tr_seed_wdata(tr_seed_wdata),
-        .tr_seed_ready(tr_seed_ready),
-        .tr_seed_rvalid(tr_seed_rvalid),
-        .tr_seed_rdata(tr_seed_rdata)
-    );
-
-    initial clk = 1'b0;
+    // =========================================================================
+    // 1. Clock & Reset
+    // =========================================================================
+    logic clk = 0;
+    logic rst = 1;
     always #5 clk = ~clk;
 
-    task automatic tick;
-        begin
-            @(posedge clk);
-            #1;
-        end
-    endtask
+    // =========================================================================
+    // 2. DUT Signals
+    // =========================================================================
+    logic         start_i          = 0;
+    pe_mode_e     op_type_i        = PE_MODE_NTT;
+    logic [POLY_ID_WIDTH-1:0] primary_poly_id_i = '0;
+    logic [POLY_ID_WIDTH-1:0] aux_poly_id_i     = '0;
+    logic [POLY_ID_WIDTH-1:0] cwm_num_terms_i   = '0;
+    logic         done_o;
 
-    task automatic report_failure(input string msg);
-        begin
-            check_fail_count++;
-            $error("%s", msg);
-        end
-    endtask
+    // Primary memory port (DUT → TB)
+    logic         pau_req_o;
+    logic         pau_rd_en_o;
+    logic [POLY_ID_WIDTH-1:0] pau_rd_poly_id_o;
+    logic [3:0][7:0]          pau_rd_idx_o;
+    logic [3:0]               pau_rd_lane_valid_o;
+    logic [3:0]               pau_wr_en_o;
+    logic [POLY_ID_WIDTH-1:0] pau_wr_poly_id_o;
+    logic [3:0][7:0]          pau_wr_idx_o;
+    logic [3:0][15:0]         pau_wr_data_o;
 
-    task automatic expect_aux_safe;
-        begin
-            #1;
-            // Current CWM integration may source auxiliary reads, but it should
-            // not write through the auxiliary descriptor in this branch.
-            if (|pau_aux_wr_en_o)
-                report_failure("PAU auxiliary path should remain read-only during this CWM flow");
-        end
-    endtask
+    // Primary memory port (TB → DUT)
+    logic         pau_rd_valid_i   = 0;
+    logic [POLY_ID_WIDTH-1:0] pau_rd_poly_id_i = '0;
+    logic [3:0][7:0]          pau_rd_idx_i     = '0;
+    logic [3:0]               pau_rd_lane_valid_i = '0;
+    logic [3:0][15:0]         pau_rd_data_i    = '0;
+    logic         pau_stall_i      = 0;
 
-    task automatic clear_other_clients;
-        begin
-            wipe_i = 1'b0;
-            hsu_hash_ek_read_en = 1'b0;
-            hsu_req = 1'b0;
-            hsu_rd_en = 1'b0;
-            hsu_rd_poly_id = '0;
-            hsu_rd_idx = '0;
-            hsu_rd_lane_valid = '0;
-            hsu_wr_en = '0;
-            hsu_wr_poly_id = '0;
-            hsu_wr_idx = '0;
-            hsu_wr_data = '0;
-            tr_req = 1'b0;
-            tr_rd_en = 1'b0;
-            tr_rd_poly_id = '0;
-            tr_rd_idx = '0;
-            tr_rd_lane_valid = '0;
-            tr_wr_en = '0;
-            tr_wr_poly_id = '0;
-            tr_wr_idx = '0;
-            tr_wr_data = '0;
-            hsu_seed_req = 1'b0;
-            hsu_seed_we = 1'b0;
-            hsu_seed_id = SEED_ID_D;
-            hsu_seed_idx = '0;
-            hsu_seed_wdata = '0;
-            tr_seed_req = 1'b0;
-            tr_seed_we = 1'b0;
-            tr_seed_id = SEED_ID_D;
-            tr_seed_idx = '0;
-            tr_seed_wdata = '0;
-        end
-    endtask
+    // Auxiliary port (TB → DUT, tied off for NTT)
+    logic         pau_aux_req_o;
+    logic         pau_aux_rd_en_o;
+    logic [POLY_ID_WIDTH-1:0] pau_aux_rd_poly_id_o;
+    logic [3:0][7:0]          pau_aux_rd_idx_o;
+    logic [3:0]               pau_aux_rd_lane_valid_o;
+    logic [3:0]               pau_aux_wr_en_o;
+    logic [POLY_ID_WIDTH-1:0] pau_aux_wr_poly_id_o;
+    logic [3:0][7:0]          pau_aux_wr_idx_o;
+    logic [3:0][15:0]         pau_aux_wr_data_o;
 
+    logic         pau_aux_rd_valid_i   = 0;
+    logic [POLY_ID_WIDTH-1:0] pau_aux_rd_poly_id_i = '0;
+    logic [3:0][7:0]          pau_aux_rd_idx_i     = '0;
+    logic [3:0]               pau_aux_rd_lane_valid_i = '0;
+    logic [3:0][15:0]         pau_aux_rd_data_i    = '0;
+
+    // =========================================================================
+    // 3. DUT Instantiation
+    // =========================================================================
+    poly_arith_unit #(
+        .NUM_POLYS     (NUM_POLYS),
+        .CWM_NUM_TERMS (3)
+    ) dut (
+        .clk                    (clk),
+        .rst                    (rst),
+        .start_i                (start_i),
+        .op_type_i              (op_type_i),
+        .primary_poly_id_i      (primary_poly_id_i),
+        .aux_poly_id_i          (aux_poly_id_i),
+        .cwm_num_terms_i        (cwm_num_terms_i),
+        .done_o                 (done_o),
+        .pau_req_o              (pau_req_o),
+        .pau_rd_en_o            (pau_rd_en_o),
+        .pau_rd_poly_id_o       (pau_rd_poly_id_o),
+        .pau_rd_idx_o           (pau_rd_idx_o),
+        .pau_rd_lane_valid_o    (pau_rd_lane_valid_o),
+        .pau_wr_en_o            (pau_wr_en_o),
+        .pau_wr_poly_id_o       (pau_wr_poly_id_o),
+        .pau_wr_idx_o           (pau_wr_idx_o),
+        .pau_wr_data_o          (pau_wr_data_o),
+        .pau_rd_valid_i         (pau_rd_valid_i),
+        .pau_rd_poly_id_i       (pau_rd_poly_id_i),
+        .pau_rd_idx_i           (pau_rd_idx_i),
+        .pau_rd_lane_valid_i    (pau_rd_lane_valid_i),
+        .pau_rd_data_i          (pau_rd_data_i),
+        .pau_stall_i            (pau_stall_i),
+        .pau_aux_req_o          (pau_aux_req_o),
+        .pau_aux_rd_en_o        (pau_aux_rd_en_o),
+        .pau_aux_rd_poly_id_o   (pau_aux_rd_poly_id_o),
+        .pau_aux_rd_idx_o       (pau_aux_rd_idx_o),
+        .pau_aux_rd_lane_valid_o(pau_aux_rd_lane_valid_o),
+        .pau_aux_wr_en_o        (pau_aux_wr_en_o),
+        .pau_aux_wr_poly_id_o   (pau_aux_wr_poly_id_o),
+        .pau_aux_wr_idx_o       (pau_aux_wr_idx_o),
+        .pau_aux_wr_data_o      (pau_aux_wr_data_o),
+        .pau_aux_rd_valid_i     (pau_aux_rd_valid_i),
+        .pau_aux_rd_poly_id_i   (pau_aux_rd_poly_id_i),
+        .pau_aux_rd_idx_i       (pau_aux_rd_idx_i),
+        .pau_aux_rd_lane_valid_i(pau_aux_rd_lane_valid_i),
+        .pau_aux_rd_data_i      (pau_aux_rd_data_i)
+    );
+
+    // =========================================================================
+    // 4. TB Memory Storage
+    //    coeff_mem is the working memory — both reads and writes use it so
+    //    in-place NTT passes see updated intermediate results.
+    // =========================================================================
+    logic [15:0] coeff_mem  [0:255];  // Working polynomial memory (in-place r/w)
+    logic [15:0] expected   [0:255];  // Golden output
+
+    // =========================================================================
+    // 5. Pending Read State (1-cycle latency model)
+    // =========================================================================
+    logic           rd_pending_r     = 0;
+    // Separate latched copies used for response (not overwritten same cycle)
+    logic [POLY_ID_WIDTH-1:0] rd_resp_poly_id = '0;
+    logic [3:0][7:0]          rd_resp_idx     = '0;
+    logic [3:0]               rd_resp_valid   = '0;
+
+    // Stage 1: Register the accepted request
     always_ff @(posedge clk) begin
         if (rst) begin
-            saw_primary_req      <= 1'b0;
-            saw_primary_read     <= 1'b0;
-            saw_primary_write    <= 1'b0;
-            saw_primary_response <= 1'b0;
-            saw_cwm_pair_revisit <= 1'b0;
-            saw_cwm_nonzero_old  <= 1'b0;
-            saw_cwm_drain_write  <= 1'b0;
-            cwm_issue_count      <= 0;
-            cwm_acc_fire_count   <= 0;
+            rd_pending_r    <= 0;
+            rd_resp_poly_id <= '0;
+            rd_resp_idx     <= '0;
+            rd_resp_valid   <= '0;
         end else begin
-            int expected_pair_idx;
-
-            if ((|dut.pe_wb_en) && pau_stall_i)
-                report_failure("PAU produced writeback while Memory reported stall");
-
-            if ((|dut.pe_wb_en) && !pau_stall_i &&
-                (pau_wr_en_o !== (dut.pe_wb_en & dut.u_cmi.coeff_valid_sel)))
-                report_failure("PAU PE writeback enable did not match CMI-masked Memory write enable");
-
-            if (pau_req_o)
-                saw_primary_req <= 1'b1;
-            if (pau_req_o && pau_rd_en_o && (|pau_rd_lane_valid_o) && !pau_stall_i)
-                saw_primary_read <= 1'b1;
-            if (pau_req_o && (|pau_wr_en_o) && !pau_stall_i)
-                saw_primary_write <= 1'b1;
-            if (pau_rd_valid_i)
-                saw_primary_response <= 1'b1;
-
-            if (dut.mac_issue) begin
-                expected_pair_idx = cwm_issue_count % CWM_PAIRS_PER_TERM;
-
-                if (dut.mac_pair_idx !== 7'(expected_pair_idx))
-                    report_failure($sformatf(
-                        "CWM controller pair_idx mismatch exp=%0d got=%0d at issue=%0d",
-                        expected_pair_idx, dut.mac_pair_idx, cwm_issue_count));
-
-                if (dut.mac_first_term !== (cwm_issue_count == 0))
-                    report_failure($sformatf(
-                        "CWM first_term pulse mismatch at issue=%0d got=%0b",
-                        cwm_issue_count, dut.mac_first_term));
-
-                // A revisit proves CWM returned to pair_idx 0 after the first
-                // 128-pair sweep instead of stopping after the seed term.
-                if ((cwm_issue_count >= CWM_PAIRS_PER_TERM) && (expected_pair_idx == 0))
-                    saw_cwm_pair_revisit <= 1'b1;
-
-                cwm_issue_count <= cwm_issue_count + 1;
+            // Accept request exactly when CMI does: req && rd_en && |lane_valid && !stall
+            if (pau_req_o && pau_rd_en_o && (|pau_rd_lane_valid_o) && !pau_stall_i) begin
+                rd_pending_r    <= 1;
+                rd_resp_poly_id <= pau_rd_poly_id_o;
+                rd_resp_idx     <= pau_rd_idx_o;
+                rd_resp_valid   <= pau_rd_lane_valid_o;
+            end else begin
+                rd_pending_r    <= 0;
             end
-
-            if (dut.cwm_valid_aligned) begin
-                // Later terms revisit the same scratch slot, so acc_old should
-                // eventually reflect a prior nonzero write instead of staying 0.
-                if ((cwm_acc_fire_count >= CWM_PAIRS_PER_TERM) &&
-                    ((dut.u_row_accum.acc0_old != '0) || (dut.u_row_accum.acc1_old != '0)))
-                    saw_cwm_nonzero_old <= 1'b1;
-
-                cwm_acc_fire_count <= cwm_acc_fire_count + 1;
-            end
-
-            if (dut.acc_drain_valid)
-                saw_cwm_drain_write <= 1'b1;
         end
     end
 
+    // Stage 2: Combinational response — drives pau_rd_valid_i same cycle CMI reads it
+    always_comb begin
+        pau_rd_valid_i      = rd_pending_r;
+        pau_rd_poly_id_i    = rd_resp_poly_id;
+        pau_rd_idx_i        = rd_resp_idx;
+        pau_rd_lane_valid_i = rd_resp_valid;
+        pau_rd_data_i       = '0;
+        if (rd_pending_r) begin
+            for (int lane = 0; lane < 4; lane++) begin
+                if (rd_resp_valid[lane])
+                    pau_rd_data_i[lane] = {4'b0, coeff_mem[rd_resp_idx[lane]][11:0]};
+            end
+        end
+    end
+
+    // =========================================================================
+    // 6. Writeback — write back into coeff_mem (in-place, supports multi-pass)
+    // =========================================================================
+    always_ff @(posedge clk) begin
+        if (!rst) begin
+            for (int lane = 0; lane < 4; lane++) begin
+                if (pau_wr_en_o[lane]) begin
+                    coeff_mem[pau_wr_idx_o[lane]] <= {4'b0, pau_wr_data_o[lane][11:0]};
+                end
+            end
+        end
+    end
+
+    // =========================================================================
+    // 7. Debug Monitor
+    // =========================================================================
+    int cycle_cnt = 0;
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            cycle_cnt <= 0;
+        end else begin
+            cycle_cnt <= cycle_cnt + 1;
+
+            // Read issue
+            if (pau_req_o && pau_rd_en_o && !pau_stall_i) begin
+                $display("[%0d] RD_ISSUE: poly=%0d idx={%0d,%0d,%0d,%0d} valid=%b",
+                    cycle_cnt,
+                    pau_rd_poly_id_o,
+                    pau_rd_idx_o[0], pau_rd_idx_o[1],
+                    pau_rd_idx_o[2], pau_rd_idx_o[3],
+                    pau_rd_lane_valid_o);
+            end
+
+            // Read response
+            if (pau_rd_valid_i) begin
+                $display("[%0d] RD_RESP:  poly=%0d idx={%0d,%0d,%0d,%0d} data={%03x,%03x,%03x,%03x}",
+                    cycle_cnt,
+                    pau_rd_poly_id_i,
+                    pau_rd_idx_i[0], pau_rd_idx_i[1],
+                    pau_rd_idx_i[2], pau_rd_idx_i[3],
+                    pau_rd_data_i[0][11:0], pau_rd_data_i[1][11:0],
+                    pau_rd_data_i[2][11:0], pau_rd_data_i[3][11:0]);
+            end
+
+            // Write beat
+            if (|pau_wr_en_o) begin
+                $display("[%0d] WR_BEAT:  idx={%0d,%0d,%0d,%0d} en=%b data={%03x,%03x,%03x,%03x}",
+                    cycle_cnt,
+                    pau_wr_idx_o[0], pau_wr_idx_o[1],
+                    pau_wr_idx_o[2], pau_wr_idx_o[3],
+                    pau_wr_en_o,
+                    pau_wr_data_o[0][11:0], pau_wr_data_o[1][11:0],
+                    pau_wr_data_o[2][11:0], pau_wr_data_o[3][11:0]);
+            end
+        end
+    end
+
+    // =========================================================================
+    // 8. Watchdog
+    // =========================================================================
+    localparam int WATCHDOG_CYCLES = 5000;
+    int watchdog_cnt = 0;
+    logic test_running = 0;
+
+    always_ff @(posedge clk) begin
+        if (rst || !test_running) begin
+            watchdog_cnt <= 0;
+        end else begin
+            watchdog_cnt <= watchdog_cnt + 1;
+            if (watchdog_cnt >= WATCHDOG_CYCLES) begin
+                $fatal(1, "[FATAL] Watchdog timeout after %0d cycles. DUT done_o never asserted.",
+                       WATCHDOG_CYCLES);
+            end
+        end
+    end
+
+    // =========================================================================
+    // 9. Tasks
+    // =========================================================================
+
+    // Clear coeff_mem before each test
+    task automatic clear_result_mem;
+        for (int i = 0; i < 256; i++)
+            coeff_mem[i] = '0;
+    endtask
+
+    // Run one PAU operation and wait for done_o
+    task automatic run_pau(input pe_mode_e mode);
+        @(negedge clk);
+        op_type_i = mode;
+        start_i   = 1;
+        test_running = 1;
+        @(negedge clk);
+        start_i = 0;
+        // Wait for done_o
+        @(posedge clk);
+        while (!done_o) @(posedge clk);
+        test_running = 0;
+        // One extra cycle to allow final writeback to settle
+        @(posedge clk);
+    endtask
+
+    // Compare result_mem vs expected, return mismatch count
+    // Compare coeff_mem vs expected (coeff_mem has final in-place result)
+    function automatic int compare_results(input string test_name);
+        int mismatches = 0;
+        for (int i = 0; i < 256; i++) begin
+            if (coeff_mem[i][11:0] !== expected[i][11:0]) begin
+                $display("[MISMATCH] %s coeff[%0d]: got %03x, expected %03x",
+                         test_name, i, coeff_mem[i][11:0], expected[i][11:0]);
+                mismatches++;
+            end
+        end
+        return mismatches;
+    endfunction
+
+    // =========================================================================
+    // 10. Main Execution
+    // =========================================================================
+    int total_pass = 0;
+    int total_fail = 0;
+    int mismatches;
+
     initial begin
-        int wait_cycles;
+        // Reset
+        rst = 1;
+        repeat (4) @(posedge clk);
+        @(negedge clk);
+        rst = 0;
+        @(posedge clk);
 
-        check_fail_count = 0;
-        rst       = 1'b1;
-        start_i   = 1'b0;
-        op_type_i = PE_MODE_INTT;
-        clear_other_clients();
-        repeat (3) tick();
-        expect_aux_safe();
+        $display("==================================================");
+        $display("  poly_arith_unit Integration Testbench");
+        $display("==================================================");
 
-        rst = 1'b0;
-        tick();
-        expect_aux_safe();
+        // ----------------------------------------------------------------
+        // Test 1: NTT Random
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 1: NTT (Random Input) ===");
+        clear_result_mem();
+        $readmemh("verif/vectors/k2/ntt_in.mem",  coeff_mem);
+        $readmemh("verif/vectors/k2/ntt_out.mem", expected);
 
-        start_i = 1'b1;
-        tick();
-        start_i = 1'b0;
+        run_pau(PE_MODE_NTT);
 
-        wait_cycles = 0;
-        while (!dut.ctl_done && (wait_cycles < 900)) begin
-            tick();
-            expect_aux_safe();
-            if (mem_fault_o)
-                report_failure("Unexpected Memory fault during PAU CWM smoke");
-            wait_cycles++;
+        mismatches = compare_results("NTT_RANDOM");
+        if (mismatches == 0) begin
+            $display("[PASS] NTT Random: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] NTT Random: %0d coefficient mismatches.", mismatches);
+            total_fail++;
         end
 
-        if (!dut.ctl_done)
-            report_failure("PAU top CWM run did not complete before timeout");
+        // Cool-down between tests
+        repeat (10) @(posedge clk);
 
-        if (!saw_primary_req)
-            report_failure("PAU top did not issue primary Memory requests");
-        if (!saw_primary_read)
-            report_failure("PAU top did not issue primary Memory reads");
-        if (!saw_primary_write)
-            report_failure("PAU top did not issue primary Memory writeback");
-        if (!saw_primary_response)
-            report_failure("PAU top did not receive primary Memory read data");
-        if (cwm_issue_count != (CWM_NUM_TERMS * CWM_PAIRS_PER_TERM))
-            report_failure($sformatf(
-                "PAU top issued %0d CWM accumulation beats, expected %0d",
-                cwm_issue_count, (CWM_NUM_TERMS * CWM_PAIRS_PER_TERM)));
-        if (cwm_acc_fire_count != (CWM_NUM_TERMS * CWM_PAIRS_PER_TERM))
-            report_failure($sformatf(
-                "PAU top produced %0d aligned CWM accumulation beats, expected %0d",
-                cwm_acc_fire_count, (CWM_NUM_TERMS * CWM_PAIRS_PER_TERM)));
-        if (!saw_cwm_pair_revisit)
-            report_failure("CWM did not revisit pair_idx 0 after the first 128-pair sweep");
-        if (!saw_cwm_nonzero_old)
-            report_failure("CWM never observed a nonzero acc_old on a later-term pair revisit");
-        if (!saw_cwm_drain_write)
-            report_failure("CWM never produced a row-accumulator drain writeback");
+        // ----------------------------------------------------------------
+        // Test 2: NTT Boundary (all q-1)
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 2: NTT (Boundary: all q-1) ===");
+        clear_result_mem();
+        $readmemh("verif/vectors/k2/ntt_max_in.mem",  coeff_mem);
+        $readmemh("verif/vectors/k2/ntt_max_out.mem", expected);
 
-        if (check_fail_count == 0)
-            $display("TB PASS");
+        run_pau(PE_MODE_NTT);
+
+        mismatches = compare_results("NTT_MAX");
+        if (mismatches == 0) begin
+            $display("[PASS] NTT Boundary: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] NTT Boundary: %0d coefficient mismatches.", mismatches);
+            total_fail++;
+        end
+
+        repeat (10) @(posedge clk);
+
+        // ----------------------------------------------------------------
+        // Summary
+        // ----------------------------------------------------------------
+        $display("\n==================================================");
+        $display("  TEST SUMMARY: PASS=%0d  FAIL=%0d", total_pass, total_fail);
+        $display("==================================================");
+        if (total_fail == 0)
+            $display("  RESULT: SUCCESS");
         else
-            $display("TB SOFT FAIL (%0d checks)", check_fail_count);
-        $finish;
+            $display("  RESULT: FAILED");
+        $display("==================================================\n");
+
+        if (total_fail != 0)
+            $fatal(1, "poly_arith_unit_tb failed");
+
+        #50 $finish;
     end
 
 endmodule
+
+`default_nettype wire

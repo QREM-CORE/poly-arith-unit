@@ -1,6 +1,6 @@
 -f lib/common_rtl/rtl.f
 rtl/poly_arith_pkg.sv
--f Memory/poly-mem-subsystem/rtl.f
+
 
 # --- Modular Functional Units ---
 rtl/mod_add.sv

@@ -59,11 +59,11 @@ package poly_arith_pkg;
     parameter logic [11:0] INV_2_MOD_Q  = 12'd1665;   // 2^(-1) mod Q
 
     // =========================================================================
-    // 5. PE Constants
+    // 6. Polynomial Memory Mapping Constants
     // =========================================================================
-
-    // -------------------------------------------------------------------------
-    // Processing Element (PE) Operating Modes (Moved to qrem_global_pkg)
-    // -------------------------------------------------------------------------
+    parameter int POLY_ID_S0 = 0;
+    parameter int POLY_ID_EI = 4;
+    parameter int POLY_ID_A0 = 5;
+    parameter int POLY_ID_T0 = 9;
 
 endpackage : poly_arith_pkg

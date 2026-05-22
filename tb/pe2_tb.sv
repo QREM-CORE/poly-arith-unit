@@ -45,16 +45,21 @@ module pe2_tb();
         coeff_t     u;
         coeff_t     v;
         pe_mode_e   mode;
-        string      name;
     } expected_uv_t;
 
     typedef struct {
         coeff_t     m;
-        string      name;
     } expected_m_t;
 
     expected_uv_t expected_uv_queue [$];
     expected_m_t  expected_m_queue  [$];
+    string        expected_uv_name_queue [$];
+    string        expected_m_name_queue  [$];
+
+    expected_uv_t exp_uv_mon;
+    expected_m_t  exp_m_mon;
+    string        exp_uv_name_mon;
+    string        exp_m_name_mon;
 
     // ------------------------------------------------------
     // DUT Instantiation
@@ -136,8 +141,8 @@ module pe2_tb();
             exp_uv.v = t2;
 
             exp_m.m    = mod_add(t1, t2);
-            exp_m.name = name;
             expected_m_queue.push_back(exp_m); // Push M to its separate queue
+            expected_m_name_queue.push_back(name);
         end
         else if (mode == PE_MODE_ADDSUB) begin
             exp_uv.u = mod_add(a, b);
@@ -149,8 +154,8 @@ module pe2_tb();
         end
 
         exp_uv.mode = mode;
-        exp_uv.name = name;
         expected_uv_queue.push_back(exp_uv);
+        expected_uv_name_queue.push_back(name);
 
         // 2. Drive Inputs
         @(posedge clk);
@@ -182,21 +187,20 @@ module pe2_tb();
     // ------------------------------------------------------
     always @(posedge clk) begin
         if (valid_o) begin
-            expected_uv_t exp;
-
             if (expected_uv_queue.size() == 0) begin
                 $display("==================================================");
                 $display("[FATAL ERROR] valid_o is high, but expected_uv_queue is empty!");
                 error_count++;
             end else begin
-                exp = expected_uv_queue.pop_front();
+                exp_uv_mon = expected_uv_queue.pop_front();
+                exp_uv_name_mon = expected_uv_name_queue.pop_front();
 
-                if (u2_o !== exp.u || v2_o !== exp.v) begin
+                if (u2_o !== exp_uv_mon.u || v2_o !== exp_uv_mon.v) begin
                     $display("==================================================");
-                    $display("[FAIL] %s", exp.name);
-                    $display("Mode: %s", exp.mode.name());
-                    if (u2_o !== exp.u) $display("   U2-Mismatch! Exp: %0d, Got: %0d", exp.u, u2_o);
-                    if (v2_o !== exp.v) $display("   V2-Mismatch! Exp: %0d, Got: %0d", exp.v, v2_o);
+                    $display("[FAIL] %s", exp_uv_name_mon);
+                    $display("Mode: %s", exp_uv_mon.mode.name());
+                    if (u2_o !== exp_uv_mon.u) $display("   U2-Mismatch! Exp: %0d, Got: %0d", exp_uv_mon.u, u2_o);
+                    if (v2_o !== exp_uv_mon.v) $display("   V2-Mismatch! Exp: %0d, Got: %0d", exp_uv_mon.v, v2_o);
                     $display("==================================================");
                     error_count++;
                 end else begin
@@ -211,20 +215,19 @@ module pe2_tb();
     // ------------------------------------------------------
     always @(posedge clk) begin
         if (valid_m_o) begin
-            expected_m_t exp;
-
             if (expected_m_queue.size() == 0) begin
                 $display("==================================================");
                 $display("[FATAL ERROR] valid_m_o is high, but expected_m_queue is empty!");
                 error_count++;
             end else begin
-                exp = expected_m_queue.pop_front();
+                exp_m_mon = expected_m_queue.pop_front();
+                exp_m_name_mon = expected_m_name_queue.pop_front();
 
-                if (m_o !== exp.m) begin
+                if (m_o !== exp_m_mon.m) begin
                     $display("==================================================");
-                    $display("[FAIL] %s", exp.name);
+                    $display("[FAIL] %s", exp_m_name_mon);
                     $display("Mode: CWM (M_O Cross Term)");
-                    $display("   M-Mismatch! Exp: %0d, Got: %0d", exp.m, m_o);
+                    $display("   M-Mismatch! Exp: %0d, Got: %0d", exp_m_mon.m, m_o);
                     $display("==================================================");
                     error_count++;
                 end else begin
