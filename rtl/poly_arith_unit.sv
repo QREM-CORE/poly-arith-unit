@@ -374,7 +374,7 @@ module poly_arith_unit #(
 
     delay_n #(
         .DWIDTH (1),
-        .DEPTH  (8)
+        .DEPTH  (9)  // 8 PE cycles + 1 CMI read latency
     ) u_cwm_align_first_term (
         .clk    (clk),
         .rst    (rst),
@@ -384,7 +384,7 @@ module poly_arith_unit #(
 
     delay_n #(
         .DWIDTH (7),
-        .DEPTH  (8)
+        .DEPTH  (9)  // 8 PE cycles + 1 CMI read latency
     ) u_cwm_align_pair_idx (
         .clk    (clk),
         .rst    (rst),

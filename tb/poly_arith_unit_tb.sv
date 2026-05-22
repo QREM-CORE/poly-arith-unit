@@ -282,6 +282,95 @@ module poly_arith_unit_tb;
     end
 
     // =========================================================================
+    // 7b. CWM Pipeline Trace (fires only during CWM test, first few pairs)
+    //     Uses hierarchical references to probe internal DUT signals.
+    //     Compare against scripts/cwm_trace_ref.py for root-cause isolation.
+    // =========================================================================
+    logic cwm_trace_en = 0;   // set in main block before run_pau(PE_MODE_CWM)
+    int   cwm_issue_cnt = 0;  // counts accepted CWM issue beats
+    int   cwm_pe_out_cnt = 0; // counts valid PE output beats
+
+    localparam int CWM_TRACE_PAIRS = 4; // trace first N pairs only
+
+    always_ff @(posedge clk) begin
+        if (!rst && cwm_trace_en) begin
+
+            // ------------------------------------------------------------------
+            // Stage 1: Controller → CMI issue beat
+            // Fires when controller issues a CWM read to CMI (issue_fire)
+            // ------------------------------------------------------------------
+            if (dut.u_controller.state_r == 3'd2 &&  // S_RUN
+                dut.u_controller.op_r    == PE_MODE_CWM &&
+                dut.cmi_ready &&
+                cwm_issue_cnt < CWM_TRACE_PAIRS) begin
+
+                $display("[CWM-CTRL][cc=%0d] pair=%0d term=%0d | pri_poly=%0d aux_poly=%0d | coeff_idx={%0d,%0d}",
+                    cycle_cnt,
+                    dut.u_controller.issue_addr_r[6:0],
+                    dut.u_controller.cwm_term_idx_r,
+                    dut.cmi_poly_id,
+                    dut.cmi_aux_poly_id,
+                    dut.u_controller.cmi_coeff_idx_o[0],
+                    dut.u_controller.cmi_coeff_idx_o[1]);
+                cwm_issue_cnt <= cwm_issue_cnt + 1;
+            end
+
+            // ------------------------------------------------------------------
+            // Stage 2: CMI response — what coefficients arrived at the PE
+            // Fires one cycle after a valid read response (pau_rd_valid_i)
+            // ------------------------------------------------------------------
+            if (pau_rd_valid_i && cwm_issue_cnt > 0 && cwm_issue_cnt <= CWM_TRACE_PAIRS + 1) begin
+                $display("[CWM-CMI ][cc=%0d] coeff_from_cmi (A): a0=%03x a1=%03x | aux (s): b0=%03x b1=%03x",
+                    cycle_cnt,
+                    dut.coeff_from_cmi[0][11:0],
+                    dut.coeff_from_cmi[1][11:0],
+                    dut.aux_coeff_from_cmi[0][11:0],
+                    dut.aux_coeff_from_cmi[1][11:0]);
+            end
+
+            // ------------------------------------------------------------------
+            // Stage 3+4: PE output → row accumulator input
+            // Fires when pe_wb_valid asserted for CWM mode
+            // ------------------------------------------------------------------
+            if (dut.pe_wb_valid && dut.pe_ctrl == PE_MODE_CWM &&
+                cwm_pe_out_cnt < CWM_TRACE_PAIRS) begin
+                $display("[CWM-PE  ][cc=%0d] valid | omega=%03x | z1(c0)=%03x z2(c1)=%03x",
+                    cycle_cnt,
+                    dut.w0_cwm_aligned,
+                    dut.z1_o,
+                    dut.z2_o);
+                $display("[CWM-ACCM][cc=%0d] acc_fire=%b first=%b pair=%0d | in: cwm0=%03x cwm1=%03x",
+                    cycle_cnt,
+                    dut.u_row_accum.acc_fire_i,
+                    dut.u_row_accum.first_term_i,
+                    dut.u_row_accum.pair_idx_i,
+                    dut.u_row_accum.cwm0_i,
+                    dut.u_row_accum.cwm1_i);
+                cwm_pe_out_cnt <= cwm_pe_out_cnt + 1;
+            end
+
+            // ------------------------------------------------------------------
+            // Stage 5: Drain output
+            // Fires when drain_valid_o rises during the drain phase
+            // ------------------------------------------------------------------
+            if (dut.u_row_accum.drain_valid_o && dut.u_row_accum.fuse_e_i &&
+                dut.u_controller.cwm_drain_idx_r < CWM_TRACE_PAIRS) begin
+                $display("[CWM-DRNN][cc=%0d] drain_idx=%0d | e0=%03x e1=%03x | out0=%03x out1=%03x",
+                    cycle_cnt,
+                    dut.u_controller.cwm_drain_idx_r,
+                    dut.u_row_accum.e0_i,
+                    dut.u_row_accum.e1_i,
+                    dut.u_row_accum.drain0_o,
+                    dut.u_row_accum.drain1_o);
+            end
+        end else begin
+            cwm_issue_cnt  <= 0;
+            cwm_pe_out_cnt <= 0;
+        end
+    end
+
+
+    // =========================================================================
     // 8. Watchdog
     // =========================================================================
     localparam int WATCHDOG_CYCLES = 10000;
@@ -466,19 +555,28 @@ module poly_arith_unit_tb;
         //   poly_id 1 = s_0 (aux = secret key term)
         //   poly_id 2 = e   (primary dest / accumulator)
         // ----------------------------------------------------------------
+        // CMI in CWM mode ignores poly_id_i/aux_poly_id_i and uses hardcoded
+        // constants from poly_arith_pkg: POLY_ID_S0=0, POLY_ID_EI=4,
+        // POLY_ID_A0=5, POLY_ID_T0=9. Load vectors into the correct slots.
         $display("\n=== TEST 5: CWM (k=1, single term) ===");
         clear_all_polys();
-        $readmemh("verif/vectors/k2/cwm_a0.mem", coeff_mem[0]);  // A_0
-        $readmemh("verif/vectors/k2/cwm_s0.mem", coeff_mem[1]);  // s_0
-        $readmemh("verif/vectors/k2/cwm_e.mem",  coeff_mem[2]);  // e (dest)
+        $readmemh("verif/vectors/k2/cwm_a0.mem", coeff_mem[5]);  // A_0 -> POLY_ID_A0=5
+        $readmemh("verif/vectors/k2/cwm_s0.mem", coeff_mem[0]);  // s_0 -> POLY_ID_S0=0
+        $readmemh("verif/vectors/k2/cwm_e.mem",  coeff_mem[4]);  // e   -> POLY_ID_EI=4
         $readmemh("verif/vectors/cwm_k1_out.mem", expected);
 
-        primary_poly_id_i = 2;  // dest = e (also base poly_id for output)
-        aux_poly_id_i     = 1;  // aux = s_0
+        primary_poly_id_i = 0;  // unused by CMI in CWM mode
+        aux_poly_id_i     = 0;  // unused by CMI in CWM mode
         cwm_num_terms_i   = 1;  // k=1 term
-        run_pau(PE_MODE_CWM);
 
-        mismatches = compare_results("CWM_K1", 2);
+        $display("\n--- CWM Pipeline Trace (first %0d pairs) ---", CWM_TRACE_PAIRS);
+        cwm_trace_en = 1;
+        run_pau(PE_MODE_CWM);
+        cwm_trace_en = 0;
+        $display("--- End CWM Pipeline Trace ---\n");
+
+
+        mismatches = compare_results("CWM_K1", 9);  // result written to POLY_ID_T0=9
         if (mismatches == 0) begin
             $display("[PASS] CWM k=1: all 256 coefficients match.");
             total_pass++;
