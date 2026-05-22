@@ -356,7 +356,21 @@ module poly_arith_unit #(
     // delay the controller bookkeeping to the same 8-cycle output boundary.
     assign cwm_z1_aligned    = z1_o;
     assign cwm_valid_aligned = pe_wb_valid && (pe_ctrl == PE_MODE_CWM);
-    assign w0_cwm_aligned    = w0;
+
+    logic cwm_odd_pair;
+    delay_n #(
+        .DWIDTH (1),
+        .DEPTH  (1)
+    ) u_cwm_odd_delay (
+        .clk    (clk),
+        .rst    (rst),
+        .data_i (mac_pair_idx[0]),
+        .data_o (cwm_odd_pair)
+    );
+
+    // FIPS 203 CWM: Odd pairs use -omega mod Q
+    assign w0_cwm_aligned    = (pe_ctrl == PE_MODE_CWM && cwm_odd_pair) ?
+                               ((w0 == 12'd0) ? 12'd0 : 12'd3329 - w0) : w0;
 
     delay_n #(
         .DWIDTH (1),

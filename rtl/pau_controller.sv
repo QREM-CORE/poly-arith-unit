@@ -701,7 +701,7 @@ module pau_controller #(
     // the twiddle stream aligned with the current single-basecase PE datapath.
     assign tf_step_o          = pass_uses_tf &&
                                 issue_fire &&
-                                ((op_r != PE_MODE_CWM) || !issue_addr_r[0]);
+                                ((op_r != PE_MODE_CWM) || issue_addr_r[0]);
     assign pass_is_radix2_o   = pass_is_radix2 &&
                                 ((state_r == S_RUN) || (state_r == S_DRAIN));
     assign pass_idx_o         = pass_idx_r;
