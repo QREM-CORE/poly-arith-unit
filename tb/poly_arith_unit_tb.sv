@@ -413,6 +413,15 @@ module poly_arith_unit_tb;
     // =========================================================================
     // 9. Tasks
     // =========================================================================
+ 
+    // Load coefficient memory slice from file
+    task automatic load_coeff_mem(input string filename, input int poly_id);
+        logic [15:0] tmp [0:MEM_DEPTH-1];
+        $readmemh(filename, tmp);
+        for (int i = 0; i < MEM_DEPTH; i++) begin
+            coeff_mem[poly_id][i] = tmp[i];
+        end
+    endtask
 
     // Clear poly_id=0 slice (NTT/INTT in-place)
     task automatic clear_poly0;
@@ -480,7 +489,7 @@ module poly_arith_unit_tb;
         // ----------------------------------------------------------------
         $display("\n=== TEST 1: NTT (Random Input) ===");
         clear_poly0();
-        $readmemh("verif/vectors/k2/ntt_in.mem",  coeff_mem[0]);
+        load_coeff_mem("verif/vectors/k2/ntt_in.mem",  0);
         $readmemh("verif/vectors/k2/ntt_out.mem", expected);
 
         primary_poly_id_i = 0;
@@ -504,7 +513,7 @@ module poly_arith_unit_tb;
         // ----------------------------------------------------------------
         $display("\n=== TEST 2: NTT (Boundary: all q-1) ===");
         clear_poly0();
-        $readmemh("verif/vectors/k2/ntt_max_in.mem",  coeff_mem[0]);
+        load_coeff_mem("verif/vectors/k2/ntt_max_in.mem",  0);
         $readmemh("verif/vectors/k2/ntt_max_out.mem", expected);
 
         primary_poly_id_i = 0;
@@ -528,7 +537,7 @@ module poly_arith_unit_tb;
         // ----------------------------------------------------------------
         $display("\n=== TEST 3: INTT (Random) ===");
         clear_poly0();
-        $readmemh("verif/vectors/k2/intt_in.mem",  coeff_mem[0]);
+        load_coeff_mem("verif/vectors/k2/intt_in.mem",  0);
         $readmemh("verif/vectors/k2/intt_out.mem", expected);
 
         primary_poly_id_i = 0;
@@ -552,7 +561,7 @@ module poly_arith_unit_tb;
         // ----------------------------------------------------------------
         $display("\n=== TEST 4: INTT (Boundary: all q-1) ===");
         clear_poly0();
-        $readmemh("verif/vectors/k2/intt_max_in.mem",  coeff_mem[0]);
+        load_coeff_mem("verif/vectors/k2/intt_max_in.mem",  0);
         $readmemh("verif/vectors/k2/intt_max_out.mem", expected);
 
         primary_poly_id_i = 0;
@@ -582,9 +591,9 @@ module poly_arith_unit_tb;
         // POLY_ID_A0=5, POLY_ID_T0=9. Load vectors into the correct slots.
         $display("\n=== TEST 5: CWM (k=1, single term) ===");
         clear_all_polys();
-        $readmemh("verif/vectors/k2/cwm_a0.mem", coeff_mem[5]);  // A_0 -> POLY_ID_A0=5
-        $readmemh("verif/vectors/k2/cwm_s0.mem", coeff_mem[0]);  // s_0 -> POLY_ID_S0=0
-        $readmemh("verif/vectors/k2/cwm_e.mem",  coeff_mem[4]);  // e   -> POLY_ID_EI=4
+        load_coeff_mem("verif/vectors/k2/cwm_a0.mem", 5);  // A_0 -> POLY_ID_A0=5
+        load_coeff_mem("verif/vectors/k2/cwm_s0.mem", 0);  // s_0 -> POLY_ID_S0=0
+        load_coeff_mem("verif/vectors/k2/cwm_e.mem",  4);  // e   -> POLY_ID_EI=4
         $readmemh("verif/vectors/cwm_k1_out.mem", expected);
 
         primary_poly_id_i = 0;  // unused by CMI in CWM mode
@@ -617,11 +626,11 @@ module poly_arith_unit_tb;
         // ----------------------------------------------------------------
         $display("\n=== TEST 6: CWM (k=2, two terms) ===");
         clear_all_polys();
-        $readmemh("verif/vectors/k2/cwm_a0.mem", coeff_mem[5]);
-        $readmemh("verif/vectors/k2/cwm_a1.mem", coeff_mem[6]);
-        $readmemh("verif/vectors/k2/cwm_s0.mem", coeff_mem[0]);
-        $readmemh("verif/vectors/k2/cwm_s1.mem", coeff_mem[1]);
-        $readmemh("verif/vectors/k2/cwm_e.mem",  coeff_mem[4]);
+        load_coeff_mem("verif/vectors/k2/cwm_a0.mem", 5);
+        load_coeff_mem("verif/vectors/k2/cwm_a1.mem", 6);
+        load_coeff_mem("verif/vectors/k2/cwm_s0.mem", 0);
+        load_coeff_mem("verif/vectors/k2/cwm_s1.mem", 1);
+        load_coeff_mem("verif/vectors/k2/cwm_e.mem",  4);
         $readmemh("verif/vectors/k2/cwm_out.mem", expected);
 
         primary_poly_id_i = 0;  // unused by CMI in CWM mode for A/S fetch, but output written to T0 + 0 = 9
@@ -653,13 +662,13 @@ module poly_arith_unit_tb;
         // ----------------------------------------------------------------
         $display("\n=== TEST 7: CWM (k=3, three terms) ===");
         clear_all_polys();
-        $readmemh("verif/vectors/k3/cwm_a0.mem", coeff_mem[5]);
-        $readmemh("verif/vectors/k3/cwm_a1.mem", coeff_mem[6]);
-        $readmemh("verif/vectors/k3/cwm_a2.mem", coeff_mem[7]);
-        $readmemh("verif/vectors/k3/cwm_s0.mem", coeff_mem[0]);
-        $readmemh("verif/vectors/k3/cwm_s1.mem", coeff_mem[1]);
-        $readmemh("verif/vectors/k3/cwm_s2.mem", coeff_mem[2]);
-        $readmemh("verif/vectors/k3/cwm_e.mem",  coeff_mem[4]);
+        load_coeff_mem("verif/vectors/k3/cwm_a0.mem", 5);
+        load_coeff_mem("verif/vectors/k3/cwm_a1.mem", 6);
+        load_coeff_mem("verif/vectors/k3/cwm_a2.mem", 7);
+        load_coeff_mem("verif/vectors/k3/cwm_s0.mem", 0);
+        load_coeff_mem("verif/vectors/k3/cwm_s1.mem", 1);
+        load_coeff_mem("verif/vectors/k3/cwm_s2.mem", 2);
+        load_coeff_mem("verif/vectors/k3/cwm_e.mem",  4);
         $readmemh("verif/vectors/k3/cwm_out.mem", expected);
 
         primary_poly_id_i = 0;
@@ -687,15 +696,15 @@ module poly_arith_unit_tb;
         // ----------------------------------------------------------------
         $display("\n=== TEST 8: CWM (k=4, four terms) ===");
         clear_all_polys();
-        $readmemh("verif/vectors/k4/cwm_a0.mem", coeff_mem[5]);
-        $readmemh("verif/vectors/k4/cwm_a1.mem", coeff_mem[6]);
-        $readmemh("verif/vectors/k4/cwm_a2.mem", coeff_mem[7]);
-        $readmemh("verif/vectors/k4/cwm_a3.mem", coeff_mem[8]);
-        $readmemh("verif/vectors/k4/cwm_s0.mem", coeff_mem[0]);
-        $readmemh("verif/vectors/k4/cwm_s1.mem", coeff_mem[1]);
-        $readmemh("verif/vectors/k4/cwm_s2.mem", coeff_mem[2]);
-        $readmemh("verif/vectors/k4/cwm_s3.mem", coeff_mem[3]);
-        $readmemh("verif/vectors/k4/cwm_e.mem",  coeff_mem[4]);
+        load_coeff_mem("verif/vectors/k4/cwm_a0.mem", 5);
+        load_coeff_mem("verif/vectors/k4/cwm_a1.mem", 6);
+        load_coeff_mem("verif/vectors/k4/cwm_a2.mem", 7);
+        load_coeff_mem("verif/vectors/k4/cwm_a3.mem", 8);
+        load_coeff_mem("verif/vectors/k4/cwm_s0.mem", 0);
+        load_coeff_mem("verif/vectors/k4/cwm_s1.mem", 1);
+        load_coeff_mem("verif/vectors/k4/cwm_s2.mem", 2);
+        load_coeff_mem("verif/vectors/k4/cwm_s3.mem", 3);
+        load_coeff_mem("verif/vectors/k4/cwm_e.mem",  4);
         $readmemh("verif/vectors/k4/cwm_out.mem", expected);
 
         primary_poly_id_i = 0;
@@ -723,11 +732,11 @@ module poly_arith_unit_tb;
         // ----------------------------------------------------------------
         $display("\n=== TEST 9: CWM Boundary (Max/Min mix) ===");
         clear_all_polys();
-        $readmemh("verif/vectors/k2/cwm_max_a0.mem", coeff_mem[5]);
-        $readmemh("verif/vectors/k2/cwm_max_a1.mem", coeff_mem[6]);
-        $readmemh("verif/vectors/k2/cwm_max_s0.mem", coeff_mem[0]);
-        $readmemh("verif/vectors/k2/cwm_max_s1.mem", coeff_mem[1]);
-        $readmemh("verif/vectors/k2/cwm_max_e.mem",  coeff_mem[4]);
+        load_coeff_mem("verif/vectors/k2/cwm_max_a0.mem", 5);
+        load_coeff_mem("verif/vectors/k2/cwm_max_a1.mem", 6);
+        load_coeff_mem("verif/vectors/k2/cwm_max_s0.mem", 0);
+        load_coeff_mem("verif/vectors/k2/cwm_max_s1.mem", 1);
+        load_coeff_mem("verif/vectors/k2/cwm_max_e.mem",  4);
         $readmemh("verif/vectors/k2/cwm_max_out.mem", expected);
 
         primary_poly_id_i = 0;
@@ -755,11 +764,11 @@ module poly_arith_unit_tb;
         // ----------------------------------------------------------------
         $display("\n=== TEST 10: CWM Zero Noise (e = 0) ===");
         clear_all_polys();
-        $readmemh("verif/vectors/k2/cwm_zero_a0.mem", coeff_mem[5]);
-        $readmemh("verif/vectors/k2/cwm_zero_a1.mem", coeff_mem[6]);
-        $readmemh("verif/vectors/k2/cwm_zero_s0.mem", coeff_mem[0]);
-        $readmemh("verif/vectors/k2/cwm_zero_s1.mem", coeff_mem[1]);
-        $readmemh("verif/vectors/k2/cwm_zero_e.mem",  coeff_mem[4]);
+        load_coeff_mem("verif/vectors/k2/cwm_zero_a0.mem", 5);
+        load_coeff_mem("verif/vectors/k2/cwm_zero_a1.mem", 6);
+        load_coeff_mem("verif/vectors/k2/cwm_zero_s0.mem", 0);
+        load_coeff_mem("verif/vectors/k2/cwm_zero_s1.mem", 1);
+        load_coeff_mem("verif/vectors/k2/cwm_zero_e.mem",  4);
         $readmemh("verif/vectors/k2/cwm_zero_out.mem", expected);
 
         primary_poly_id_i = 0;
