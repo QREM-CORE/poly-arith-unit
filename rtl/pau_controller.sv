@@ -695,7 +695,8 @@ module pau_controller #(
 
     // Keep the PE radix mode alive for the full controller-owned pass lifetime,
     // including the drain window after the final issue beat.
-    assign tf_start_o         = (state_r == S_SETUP) && pass_uses_tf;
+    assign tf_start_o         = ((state_r == S_SETUP) && pass_uses_tf) ||
+                                ((state_r == S_RUN) && (op_r == PE_MODE_CWM) && (issue_addr_r == ZERO8));
     // CWM consumes 128 coefficient pairs but reuses each 64-entry omega value
     // for two consecutive issues. Advancing every other accepted issue keeps
     // the twiddle stream aligned with the current single-basecase PE datapath.

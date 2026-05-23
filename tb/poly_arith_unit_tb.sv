@@ -610,6 +610,42 @@ module poly_arith_unit_tb;
         repeat (10) @(posedge clk);
 
         // ----------------------------------------------------------------
+        // Test 6: CWM k=2
+        //   poly_id 0,1 = s_0, s_1
+        //   poly_id 5,6 = A_0, A_1
+        //   poly_id 4   = e
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 6: CWM (k=2, two terms) ===");
+        clear_all_polys();
+        $readmemh("verif/vectors/k2/cwm_a0.mem", coeff_mem[5]);
+        $readmemh("verif/vectors/k2/cwm_a1.mem", coeff_mem[6]);
+        $readmemh("verif/vectors/k2/cwm_s0.mem", coeff_mem[0]);
+        $readmemh("verif/vectors/k2/cwm_s1.mem", coeff_mem[1]);
+        $readmemh("verif/vectors/k2/cwm_e.mem",  coeff_mem[4]);
+        $readmemh("verif/vectors/k2/cwm_out.mem", expected);
+
+        primary_poly_id_i = 0;  // unused by CMI in CWM mode for A/S fetch, but output written to T0 + 0 = 9
+        aux_poly_id_i     = 0;
+        cwm_num_terms_i   = 2;  // k=2 terms
+
+        $display("\n--- CWM Pipeline Trace (first %0d pairs) ---", CWM_TRACE_PAIRS);
+        cwm_trace_en = 1;
+        run_pau(PE_MODE_CWM);
+        cwm_trace_en = 0;
+        $display("--- End CWM Pipeline Trace ---\n");
+
+        mismatches = compare_results("CWM_K2", 9);  // result written to POLY_ID_T0=9
+        if (mismatches == 0) begin
+            $display("[PASS] CWM k=2: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] CWM k=2: %0d coefficient mismatches.", mismatches);
+            total_fail++;
+        end
+
+        repeat (10) @(posedge clk);
+
+        // ----------------------------------------------------------------
         // Summary
         // ----------------------------------------------------------------
         $display("\n==================================================");
