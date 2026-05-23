@@ -4,16 +4,18 @@
  * Target: FIPS 203 (ML-KEM / Kyber)
  *
  * Description:
- * Performs Combinational Modular Addition or Subtraction: (A +/- B) mod 3329.
+ * Performs Sequential Modular Addition or Subtraction: (A +/- B) mod 3329.
  *
- * Latency: 0 Clock Cycles (Combinational)
- * - Inputs should be registered at the PE level if pipelining is required.
+ * Latency: 1 Clock Cycle
  */
 
 import poly_arith_pkg::*;
 import qrem_global_pkg::*;
 
 module mod_uni_add_sub(
+    input   logic   clk,
+    input   logic   rst,
+
     // Inputs: Two 12-bit coefficients (0 to 3328)
     input   coeff_t op1_i,
     input   coeff_t op2_i,
@@ -26,6 +28,7 @@ module mod_uni_add_sub(
     // Internal signals for calculation
     coeff_t         op2_final;
     logic [12:0]    sum_raw;
+    logic [12:0]    sum_raw_q;
     logic [12:0]    sum_reduced;
 
     always_comb begin
@@ -46,18 +49,28 @@ module mod_uni_add_sub(
         // =====================================================================
         // Max possible sum: 3328 + 3329 = 6657 (fits in 13 bits)
         sum_raw = op1_i + op2_final;
+    end
 
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            sum_raw_q <= '0;
+        end else begin
+            sum_raw_q <= sum_raw;
+        end
+    end
+
+    always_comb begin
         // =====================================================================
         // 3. Modular Reduction (Conditional Subtraction)
         // =====================================================================
         // If the sum exceeds Q, we wrap it back by subtracting Q.
-        sum_reduced = sum_raw - 13'(Q);
+        sum_reduced = sum_raw_q - 13'(Q);
 
         // Mux to select the correct result
-        if (sum_raw >= 13'(Q)) begin
+        if (sum_raw_q >= 13'(Q)) begin
             result_o = sum_reduced[11:0];
         end else begin
-            result_o = sum_raw[11:0];
+            result_o = sum_raw_q[11:0];
         end
     end
 

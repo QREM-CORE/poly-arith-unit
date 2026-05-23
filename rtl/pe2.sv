@@ -95,18 +95,7 @@ module pe2 (
     coeff_t delay_1_w2_data_i;
     coeff_t delay_1_w2_data_o;
 
-    // -------- Delay 1 Addition Output Register --------
-    // Inputs
-    coeff_t delay_1_add_data_i;
-    // Outputs
-    coeff_t delay_1_add_data_o;
-
-
-    // -------- Delay 1 Subtraction Output Register --------
-    // Inputs
-    coeff_t delay_1_sub_data_i;
-    // Outputs
-    coeff_t delay_1_sub_data_o;
+    // (delay_1_add and delay_1_sub registers were removed via retiming)
 
     // ============= Arithmetic Module Wires =============
 
@@ -213,31 +202,7 @@ module pe2 (
     );
     assign delay_1_w2_data_i = w2_i;
 
-    // -------- Delay 1 Addition Output Register --------
-    delay_n #(
-        .DWIDTH (COEFF_WIDTH), // 12-bit
-        .DEPTH  (1)
-    ) u_delay_1_add (
-        .clk(clk),
-        .rst(rst),
-
-        .data_i(delay_1_add_data_i),
-        .data_o(delay_1_add_data_o)
-    );
-    assign delay_1_add_data_i = mod_add_result_o;
-
-    // -------- Delay 1 Subtraction Output Register --------
-    delay_n #(
-        .DWIDTH (COEFF_WIDTH), // 12-bit
-        .DEPTH  (1)
-    ) u_delay_1_sub (
-        .clk(clk),
-        .rst(rst),
-
-        .data_i(delay_1_sub_data_i),
-        .data_o(delay_1_sub_data_o)
-    );
-    assign delay_1_sub_data_i = mod_sub_result_o;
+    // (delay_1_add and delay_1_sub registers were removed via retiming)
 
     // =========================================================================
     // Arithmetic Module Instantiations
@@ -256,7 +221,7 @@ module pe2 (
         .valid_o       ()
     );
 
-    assign mod_mul_1_op1_i = ctrl_i[0] ? delay_1_add_data_o : a2_i;
+    assign mod_mul_1_op1_i = ctrl_i[0] ? mod_add_result_o : a2_i;
     assign mod_mul_1_op2_i = ctrl_i[0] ? delay_1_w1_data_o : w1_i;
 
     // -------- Modular Multiplier 2 Instantiation --------
@@ -273,10 +238,12 @@ module pe2 (
     );
 
     assign mod_mul_2_op1_i = ctrl_i[0] ? delay_1_w2_data_o : w2_i;
-    assign mod_mul_2_op2_i = ctrl_i[0] ? delay_1_sub_data_o : b2_i;
+    assign mod_mul_2_op2_i = ctrl_i[0] ? mod_sub_result_o : b2_i;
 
     // -------- Modular Adder Instantiation --------
     mod_add u_mod_add (
+        .clk        (clk),
+        .rst        (rst),
         .op1_i      (mod_add_op1_i),
         .op2_i      (mod_add_op2_i),
 
@@ -287,6 +254,8 @@ module pe2 (
 
     // -------- Modular Subtractor Instantiation --------
     mod_sub u_mod_sub (
+        .clk        (clk),
+        .rst        (rst),
         .op1_i      (mod_sub_op1_i),
         .op2_i      (mod_sub_op2_i),
 
@@ -300,12 +269,12 @@ module pe2 (
     // =========================================================================
 
     // Data Output
-    assign u2_mux_i = ctrl_i[2] ? mod_mul_1_result_o : delay_1_add_data_o;
-    assign v2_mux_i = ctrl_i[2] ? mod_mul_2_result_o : delay_1_sub_data_o;
+    assign u2_mux_i = ctrl_i[2] ? mod_mul_1_result_o : mod_add_result_o;
+    assign v2_mux_i = ctrl_i[2] ? mod_mul_2_result_o : mod_sub_result_o;
 
     assign u2_o = ctrl_i[1] ? u2_mux_i : mod_mul_1_result_o;
     assign v2_o = ctrl_i[1] ? v2_mux_i : mod_mul_2_result_o;
-    assign m_o = delay_1_add_data_o;
+    assign m_o = mod_add_result_o;
 
     // Dynamic Valid Output Multiplexer
     always_comb begin

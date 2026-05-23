@@ -309,6 +309,10 @@ module pe_unit (
                 // Outputs
                 z1_o = pe3_u3_o_d1;   // U3 (SYNCHRONIZED: 1-Cycle Delay to match PE0)
                 z2_o = pe0_v0_o;      // V0
+
+                if (pe0_valid_o) begin
+                    $display("PE_UNIT_CWM: cc=%0t pe0_v0_o=%x pe3_u3_o_d1=%x pe0_a0_i=%x pe0_b0_i=%x pe0_w0_i=%x", $time, pe0_v0_o, pe3_u3_o_d1, pe0_a0_i, pe0_b0_i, pe0_w0_i);
+                end
                 valid_o = pe0_valid_o & pe3_valid_o_d1; // Perfectly aligned to 8 CCs
             end
 

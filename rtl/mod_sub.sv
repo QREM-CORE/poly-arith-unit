@@ -4,15 +4,18 @@
  * Target: FIPS 203 (ML-KEM / Kyber)
  *
  * Description:
- * Performs Combinational Modular Subtraction: (A - B) mod 3329.
+ * Performs Sequential Modular Subtraction: (A - B) mod 3329.
  *
- * Latency: 0 Clock Cycles (Combinational)
+ * Latency: 1 Clock Cycle
  */
 
 import poly_arith_pkg::*;
 import qrem_global_pkg::*;
 
 module mod_sub(
+    input   logic   clk,
+    input   logic   rst,
+
     // Inputs: Two 12-bit coefficients (0 to 3328)
     input   coeff_t op1_i,
     input   coeff_t op2_i,
@@ -23,6 +26,7 @@ module mod_sub(
 
     // Using 13 bits to capture the sign/underflow of the subtraction
     logic [12:0] diff;
+    logic [12:0] diff_q;
     logic [12:0] diff_plus_q;
 
     always_comb begin
@@ -31,19 +35,29 @@ module mod_sub(
         // The MSB (bit 12) effectively acts as the sign bit in 2's complement view,
         // or indicates a borrow in unsigned view.
         diff = op1_i - op2_i;
+    end
 
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            diff_q <= '0;
+        end else begin
+            diff_q <= diff;
+        end
+    end
+
+    always_comb begin
         // 2. Prepare Corrected Value
         // If the result was negative (underflow), we add Q to bring it back to [0, Q-1].
         // We explicitly cast Q to 13 bits to match the width.
-        diff_plus_q = diff + 13'(Q);
+        diff_plus_q = diff_q + 13'(Q);
 
         // 3. Output Selection
         // If bit 12 is 1, it means the result was negative (underflow occurred).
-        // Therefore, we select the corrected value (diff + Q).
-        if (diff[12]) begin
+        // Therefore, we select the corrected value (diff_q + Q).
+        if (diff_q[12]) begin
             result_o = diff_plus_q[11:0];
         end else begin
-            result_o = diff[11:0];
+            result_o = diff_q[11:0];
         end
     end
 

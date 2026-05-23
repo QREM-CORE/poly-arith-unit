@@ -31,18 +31,12 @@ module mac_pair_add (
     output coeff_t sum1_o
 );
 
-    // Two cheap modular adders are enough because the PAU's current CWM
-    // datapath emits one coefficient pair per cycle.
-    mod_add u_add0 (
-        .op1_i    (acc0_i),
-        .op2_i    (cwm0_i),
-        .result_o (sum0_o)
-    );
+    logic [12:0] sum0_raw, sum1_raw;
 
-    mod_add u_add1 (
-        .op1_i    (acc1_i),
-        .op2_i    (cwm1_i),
-        .result_o (sum1_o)
-    );
+    assign sum0_raw = acc0_i + cwm0_i;
+    assign sum1_raw = acc1_i + cwm1_i;
+
+    assign sum0_o = (sum0_raw >= 13'(Q)) ? (sum0_raw - 13'(Q)) : sum0_raw[11:0];
+    assign sum1_o = (sum1_raw >= 13'(Q)) ? (sum1_raw - 13'(Q)) : sum1_raw[11:0];
 
 endmodule

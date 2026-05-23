@@ -168,14 +168,18 @@ module mac_row_accum #(
     logic   fuse_e_q;
 
     mod_add u_drain_add0 (
-        .op1_i    (drain0_raw_q),
-        .op2_i    (e0_q),
+        .clk      (clk),
+        .rst      (rst),
+        .op1_i    (drain0_raw),
+        .op2_i    (e0_i),
         .result_o (drain0_fused_out)
     );
 
     mod_add u_drain_add1 (
-        .op1_i    (drain1_raw_q),
-        .op2_i    (e1_q),
+        .clk      (clk),
+        .rst      (rst),
+        .op1_i    (drain1_raw),
+        .op2_i    (e1_i),
         .result_o (drain1_fused_out)
     );
 
