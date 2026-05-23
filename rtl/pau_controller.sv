@@ -206,6 +206,7 @@ module pau_controller #(
     // =========================================================================
     pe_mode_e pe_ctrl_d1_r;
     logic     pe_valid_d1_r;
+    logic     pass_is_radix2_d1_r;
 
     // =========================================================================
     // Index generation helpers
@@ -653,6 +654,7 @@ module pau_controller #(
 
             pe_ctrl_d1_r  <= PE_MODE_NTT;
             pe_valid_d1_r <= 1'b0;
+            pass_is_radix2_d1_r <= 1'b0;
         end else begin
             state_r      <= state_n;
             pass_idx_r   <= pass_idx_n;
@@ -681,6 +683,8 @@ module pau_controller #(
             // Delay control/valid by 1 cycle to match wrapper read latency
             pe_ctrl_d1_r  <= op_r;
             pe_valid_d1_r <= issue_fire;
+            pass_is_radix2_d1_r <= pass_is_radix2 &&
+                                   ((state_r == S_RUN) || (state_r == S_DRAIN));
         end
     end
 
@@ -703,8 +707,7 @@ module pau_controller #(
     assign tf_step_o          = pass_uses_tf &&
                                 issue_fire &&
                                 ((op_r != PE_MODE_CWM) || issue_addr_r[0]);
-    assign pass_is_radix2_o   = pass_is_radix2 &&
-                                ((state_r == S_RUN) || (state_r == S_DRAIN));
+    assign pass_is_radix2_o   = pass_is_radix2_d1_r;
     assign pass_idx_o         = pass_idx_r;
 
     // NOTE(PAU/Mem): CWM accumulation walks source-term slots directly while
