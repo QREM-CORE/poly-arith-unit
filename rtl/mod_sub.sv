@@ -24,40 +24,26 @@ module mod_sub(
     output  coeff_t result_o
 );
 
-    // Using 13 bits to capture the sign/underflow of the subtraction
-    logic [12:0] diff;
-    logic [12:0] diff_q;
-    logic [12:0] diff_plus_q;
+    logic [13:0] diff;
+    logic [13:0] diff_plus_q;
+    logic [11:0] result_comb;
 
     always_comb begin
-        // 1. Raw Subtraction
-        // If op1 < op2, this will underflow (wrap around in 13-bit unsigned arithmetic).
-        // The MSB (bit 12) effectively acts as the sign bit in 2's complement view,
-        // or indicates a borrow in unsigned view.
-        diff = op1_i - op2_i;
+        diff = {2'b0, op1_i} - {2'b0, op2_i};
+        diff_plus_q = diff + 14'(Q);
+
+        if (diff[13]) begin // negative, op1_i < op2_i
+            result_comb = diff_plus_q[11:0];
+        end else begin
+            result_comb = diff[11:0];
+        end
     end
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            diff_q <= '0;
+            result_o <= '0;
         end else begin
-            diff_q <= diff;
-        end
-    end
-
-    always_comb begin
-        // 2. Prepare Corrected Value
-        // If the result was negative (underflow), we add Q to bring it back to [0, Q-1].
-        // We explicitly cast Q to 13 bits to match the width.
-        diff_plus_q = diff_q + 13'(Q);
-
-        // 3. Output Selection
-        // If bit 12 is 1, it means the result was negative (underflow occurred).
-        // Therefore, we select the corrected value (diff_q + Q).
-        if (diff_q[12]) begin
-            result_o = diff_plus_q[11:0];
-        end else begin
-            result_o = diff_q[11:0];
+            result_o <= result_comb;
         end
     end
 

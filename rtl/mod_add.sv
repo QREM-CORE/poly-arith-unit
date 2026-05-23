@@ -24,36 +24,26 @@ module mod_add(
     output  coeff_t result_o
 );
 
-    // Internal signals for calculation
-    // 13 bits required to capture overflow (max sum = 6656)
-    logic [12:0] sum;
-    logic [12:0] sum_q;
-    logic [12:0] sum_minus_q;
+    logic [13:0] sum;
+    logic [13:0] sum_minus_q;
+    logic [11:0] result_comb;
 
     always_comb begin
-        // 1. Raw Addition
-        sum = op1_i + op2_i;
+        sum = {2'b0, op1_i} + {2'b0, op2_i};
+        sum_minus_q = sum - 14'(Q);
+
+        if (sum_minus_q[13]) begin // sum < Q
+            result_comb = sum[11:0];
+        end else begin
+            result_comb = sum_minus_q[11:0];
+        end
     end
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            sum_q <= '0;
+            result_o <= '0;
         end else begin
-            sum_q <= sum;
-        end
-    end
-
-    always_comb begin
-        // 2. Prepare Reduced Value
-        // Explicitly cast Q to 13 bits to ensure correct subtraction width
-        sum_minus_q = sum_q - 13'(Q);
-
-        // 3. Modular Reduction Selection
-        // If sum_q >= 3329, we must subtract 3329.
-        if (sum_q >= 13'(Q)) begin
-            result_o = sum_minus_q[11:0];
-        end else begin
-            result_o = sum_q[11:0];
+            result_o <= result_comb;
         end
     end
 
