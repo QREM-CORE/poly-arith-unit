@@ -13,13 +13,59 @@
  * Top module for the whole Poly Arithmetic Unit (PAU) system.
  *
  * Notes:
- *   - Writeback is enabled for NTT / INTT / ADDSUB / COMP / DECOMP.
+ *   - Writeback is enabled for NTT / INTT / ADDSUB.
  *   - CWM accumulates locally through mac_row_accum and writes back during
  *     a dedicated drain phase.
  *   - CWM consumes the PAU auxiliary descriptor for dual-source {A_hat, s_hat} fetch.
  *   - ADD/SUB uses the auxiliary descriptor to fetch the secondary operand Y.
+ *     is_sub_i controls addition (0) vs subtraction (1).
  *   - PE op_a inputs come from coeff_from_cmi primary descriptor.
  *   - PE op_b inputs come from coeff_from_cmi auxiliary descriptor for ADDSUB.
+ *
+ * =============================================================================
+ * USER GUIDE & OPERATION FLOWS:
+ * =============================================================================
+ *
+ * 1. NTT / INTT Modes (In-place transformation)
+ *    - Setup: Write target polynomial to a memory slot.
+ *    - Control:
+ *        op_type_i = PE_MODE_NTT or PE_MODE_INTT
+ *        primary_poly_id_i = [target slot]
+ *    - Flow: Pulse start_i -> PAU executes mixed-radix passes in-place -> wait for done_o.
+ *    - Output: Result overwrites target slot.
+ *
+ * 2. ADDSUB Mode (Point-wise addition or subtraction)
+ *    - Setup: Write Operand A to primary_poly_id_i, Operand B to aux_poly_id_i.
+ *    - Control:
+ *        op_type_i = PE_MODE_ADDSUB
+ *        is_sub_i = 0 (Add: A + B) or 1 (Sub: A - B)
+ *        primary_poly_id_i = [Operand A slot]
+ *        aux_poly_id_i = [Operand B slot]
+ *    - Flow: Pulse start_i -> PAU streams both operands and performs math -> wait for done_o.
+ *    - Output: Result overwrites Operand A slot.
+ *
+ * 3. CWM Mode (Coordinate-Wise Multiplication & Accumulation: t = A * s + e)
+ *    - Setup:
+ *        - CWM ignores primary_poly_id_i / aux_poly_id_i descriptors.
+ *        - It relies on fixed memory slots:
+ *            - Polynomial s: Slots 0 to k-1 (POLY_ID_S0)
+ *            - Error poly e: Slot 4 (POLY_ID_EI)
+ *            - Matrix A:     Slots 5 to 5+k-1 (POLY_ID_A0)
+ *            - Output t:     Slot 9 (POLY_ID_T0)
+ *    - Control:
+ *        op_type_i = PE_MODE_CWM
+ *        cwm_num_terms_i = k (number of terms, e.g. 2, 3, or 4)
+ *    - Flow:
+ *        1. Pulse start_i.
+ *        2. Accumulation Phase: For idx = 0 to k-1, PAU multiplies A_idx * s_idx
+ *           and accumulates in internal row scratchpad.
+ *        3. Drain Phase: PAU fetches e, adds it to accumulated sum, and writes
+ *           the final output polynomial to slot 9 (POLY_ID_T0).
+ *        4. Wait for done_o.
+ *
+ * 4. COMP / DECOMP Modes
+ *    - Status: Currently UNSUPPORTED.
+ * =============================================================================
  */
 
 import poly_arith_pkg::*;
