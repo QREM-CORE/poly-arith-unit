@@ -117,16 +117,38 @@ module mac_row_accum #(
 
     integer p;
 
+    logic        acc_fire_q;
+    logic        first_term_q;
+    logic [6:0]  pair_idx_q;
+    coeff_t      cwm0_q;
+    coeff_t      cwm1_q;
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            acc_fire_q   <= 1'b0;
+            first_term_q <= 1'b0;
+            pair_idx_q   <= '0;
+            cwm0_q       <= '0;
+            cwm1_q       <= '0;
+        end else begin
+            acc_fire_q   <= acc_fire_i;
+            first_term_q <= first_term_i;
+            pair_idx_q   <= pair_idx_i;
+            cwm0_q       <= cwm0_i;
+            cwm1_q       <= cwm1_i;
+        end
+    end
+
     // ------------------------------------------------------------
     // Scratch reads
     // ------------------------------------------------------------
     // Write-through bypass guarantees that acc*_old sees the running partial
     // sum for back-to-back accesses to the same pair index.
-    assign acc_rd_bypass_hit   = last_wr_valid_q && (last_wr_pair_idx_q == pair_idx_i);
+    assign acc_rd_bypass_hit   = last_wr_valid_q && (last_wr_pair_idx_q == pair_idx_q);
     assign drain_rd_bypass_hit = last_wr_valid_q && (last_wr_pair_idx_q == drain_idx_i);
 
-    assign acc0_old   = acc_rd_bypass_hit   ? last_wr_acc0_q : acc0_mem[pair_idx_i];
-    assign acc1_old   = acc_rd_bypass_hit   ? last_wr_acc1_q : acc1_mem[pair_idx_i];
+    assign acc0_old   = acc_rd_bypass_hit   ? last_wr_acc0_q : acc0_mem[pair_idx_q];
+    assign acc1_old   = acc_rd_bypass_hit   ? last_wr_acc1_q : acc1_mem[pair_idx_q];
     assign drain0_raw = drain_rd_bypass_hit ? last_wr_acc0_q : acc0_mem[drain_idx_i];
     assign drain1_raw = drain_rd_bypass_hit ? last_wr_acc1_q : acc1_mem[drain_idx_i];
 
@@ -136,8 +158,8 @@ module mac_row_accum #(
     mac_pair_add u_acc_add (
         .acc0_i (acc0_old),
         .acc1_i (acc1_old),
-        .cwm0_i (cwm0_i),
-        .cwm1_i (cwm1_i),
+        .cwm0_i (cwm0_q),
+        .cwm1_i (cwm1_q),
         .sum0_o (acc0_sum),
         .sum1_o (acc1_sum)
     );
@@ -158,11 +180,11 @@ module mac_row_accum #(
     // first_term_i is the single-cycle start pulse. Once it arrives, seed the
     // whole first 128-pair sweep by overwriting each slot until pair 127 has
     // been written, then switch back to normal accumulation for later terms.
-    assign init_active_n = first_term_i ? 1'b1 :
-                           ((acc_fire_i && init_active_q && (pair_idx_i == NUM_PAIRS-1)) ? 1'b0 : init_active_q);
-    assign seed_mode     = first_term_i || init_active_q;
-    assign acc0_wr_data  = seed_mode ? cwm0_i : acc0_sum;
-    assign acc1_wr_data  = seed_mode ? cwm1_i : acc1_sum;
+    assign init_active_n = first_term_q ? 1'b1 :
+                           ((acc_fire_q && init_active_q && (pair_idx_q == NUM_PAIRS-1)) ? 1'b0 : init_active_q);
+    assign seed_mode     = first_term_q || init_active_q;
+    assign acc0_wr_data  = seed_mode ? cwm0_q : acc0_sum;
+    assign acc1_wr_data  = seed_mode ? cwm1_q : acc1_sum;
 
     // ------------------------------------------------------------
     // Scratch update
@@ -177,13 +199,13 @@ module mac_row_accum #(
             last_wr_acc1_q     <= '0;
             init_active_q      <= 1'b0;
         end else begin
-            last_wr_valid_q <= acc_fire_i;
+            last_wr_valid_q <= acc_fire_q;
             init_active_q   <= init_active_n;
 
-            if (acc_fire_i) begin
-                acc0_mem[pair_idx_i] <= acc0_wr_data;
-                acc1_mem[pair_idx_i] <= acc1_wr_data;
-                last_wr_pair_idx_q   <= pair_idx_i;
+            if (acc_fire_q) begin
+                acc0_mem[pair_idx_q] <= acc0_wr_data;
+                acc1_mem[pair_idx_q] <= acc1_wr_data;
+                last_wr_pair_idx_q   <= pair_idx_q;
                 last_wr_acc0_q       <= acc0_wr_data;
                 last_wr_acc1_q       <= acc1_wr_data;
             end
