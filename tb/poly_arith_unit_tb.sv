@@ -716,6 +716,38 @@ module poly_arith_unit_tb;
         repeat (10) @(posedge clk);
 
         // ----------------------------------------------------------------
+        // Test 9: CWM Boundary (Max) k=2
+        //   poly_id 0,1 = s_0, s_1 (boundary)
+        //   poly_id 5,6 = A_0, A_1 (boundary)
+        //   poly_id 4   = e (boundary)
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 9: CWM Boundary (Max/Min mix) ===");
+        clear_all_polys();
+        $readmemh("verif/vectors/k2/cwm_max_a0.mem", coeff_mem[5]);
+        $readmemh("verif/vectors/k2/cwm_max_a1.mem", coeff_mem[6]);
+        $readmemh("verif/vectors/k2/cwm_max_s0.mem", coeff_mem[0]);
+        $readmemh("verif/vectors/k2/cwm_max_s1.mem", coeff_mem[1]);
+        $readmemh("verif/vectors/k2/cwm_max_e.mem",  coeff_mem[4]);
+        $readmemh("verif/vectors/k2/cwm_max_out.mem", expected);
+
+        primary_poly_id_i = 0;
+        aux_poly_id_i     = 0;
+        cwm_num_terms_i   = 2;  // k=2 terms for boundary testing
+
+        run_pau(PE_MODE_CWM);
+
+        mismatches = compare_results("CWM_MAX_K2", 9);
+        if (mismatches == 0) begin
+            $display("[PASS] CWM Boundary: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] CWM Boundary: %0d coefficient mismatches.", mismatches);
+            total_fail++;
+        end
+
+        repeat (10) @(posedge clk);
+
+        // ----------------------------------------------------------------
         // Summary
         // ----------------------------------------------------------------
         $display("\n==================================================");

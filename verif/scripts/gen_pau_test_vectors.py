@@ -80,6 +80,30 @@ def gen_cwm_vectors(k_dir, k):
     write_mem(f"{k_dir}/cwm_e.mem", e)
     write_mem(f"{k_dir}/cwm_out.mem", t_hat_final)
 
+    # Boundary (Max/Min mix)
+    bound_vals = [0, q-1, q]
+    A_row_max = [[bound_vals[(i + j) % 3] for i in range(256)] for j in range(k)]
+    s_max = [[bound_vals[(i + j + 1) % 3] for i in range(256)] for j in range(k)]
+    e_max = [bound_vals[(i + 2) % 3] for i in range(256)]
+
+    t_hat_max = [0] * 256
+    for j in range(k):
+        prod = MultiplyNTTs(A_row_max[j], s_max[j])
+        t_hat_max = [(t + p) % q for t, p in zip(t_hat_max, prod)]
+        write_mem(f"{k_dir}/cwm_max_a{j}.mem", A_row_max[j])
+        write_mem(f"{k_dir}/cwm_max_s{j}.mem", s_max[j])
+
+    t_hat_final_max = [(t + ej) % q for t, ej in zip(t_hat_max, e_max)]
+    write_mem(f"{k_dir}/cwm_max_e.mem", e_max)
+    write_mem(f"{k_dir}/cwm_max_out.mem", t_hat_final_max)
+
+    if k == 2:
+        # Generate the special k=1 verification vector for the testbench
+        # t_hat_k1 = A_0 * s_0 + e
+        prod_k1 = MultiplyNTTs(A_row[0], s[0])
+        t_hat_k1 = [(p + ej) % q for p, ej in zip(prod_k1, e)]
+        write_mem(f"{base_dir}/vectors/cwm_k1_out.mem", t_hat_k1)
+
 if __name__ == "__main__":
     print("Generating PAU test vectors...")
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # back to verif/
