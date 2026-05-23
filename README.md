@@ -52,7 +52,7 @@ The control plane for Number Theoretic Transforms, managing the deterministic lo
 - [x] PE 0-3 internal routing and structural synthesis
 - [x] Twiddle Factor ROM and Address Generator FSM
 - [x] Cycle-accurate testbenches for NTT/INTT schedules
-- [ ] Top-level AU (Arithmetic Unit) Controller integration
+- [x] Top-level AU (Arithmetic Unit) Controller integration
 
 ## 📚 References
 * NIST FIPS 203: Module-Lattice-Based Key-Encapsulation Mechanism Standard.
