@@ -413,7 +413,7 @@ module poly_arith_unit_tb;
     // =========================================================================
     // 9. Tasks
     // =========================================================================
- 
+
     // Load coefficient memory slice from file
     task automatic load_coeff_mem(input string filename, input int poly_id);
         logic [15:0] tmp [0:MEM_DEPTH-1];
