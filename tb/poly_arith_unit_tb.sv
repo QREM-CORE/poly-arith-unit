@@ -646,6 +646,76 @@ module poly_arith_unit_tb;
         repeat (10) @(posedge clk);
 
         // ----------------------------------------------------------------
+        // Test 7: CWM k=3
+        //   poly_id 0,1,2 = s_0, s_1, s_2
+        //   poly_id 5,6,7 = A_0, A_1, A_2
+        //   poly_id 4     = e
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 7: CWM (k=3, three terms) ===");
+        clear_all_polys();
+        $readmemh("verif/vectors/k3/cwm_a0.mem", coeff_mem[5]);
+        $readmemh("verif/vectors/k3/cwm_a1.mem", coeff_mem[6]);
+        $readmemh("verif/vectors/k3/cwm_a2.mem", coeff_mem[7]);
+        $readmemh("verif/vectors/k3/cwm_s0.mem", coeff_mem[0]);
+        $readmemh("verif/vectors/k3/cwm_s1.mem", coeff_mem[1]);
+        $readmemh("verif/vectors/k3/cwm_s2.mem", coeff_mem[2]);
+        $readmemh("verif/vectors/k3/cwm_e.mem",  coeff_mem[4]);
+        $readmemh("verif/vectors/k3/cwm_out.mem", expected);
+
+        primary_poly_id_i = 0;
+        aux_poly_id_i     = 0;
+        cwm_num_terms_i   = 3;  // k=3 terms
+
+        run_pau(PE_MODE_CWM);
+
+        mismatches = compare_results("CWM_K3", 9);
+        if (mismatches == 0) begin
+            $display("[PASS] CWM k=3: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] CWM k=3: %0d coefficient mismatches.", mismatches);
+            total_fail++;
+        end
+
+        repeat (10) @(posedge clk);
+
+        // ----------------------------------------------------------------
+        // Test 8: CWM k=4
+        //   poly_id 0,1,2,3 = s_0, s_1, s_2, s_3
+        //   poly_id 5,6,7,8 = A_0, A_1, A_2, A_3
+        //   poly_id 4       = e
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 8: CWM (k=4, four terms) ===");
+        clear_all_polys();
+        $readmemh("verif/vectors/k4/cwm_a0.mem", coeff_mem[5]);
+        $readmemh("verif/vectors/k4/cwm_a1.mem", coeff_mem[6]);
+        $readmemh("verif/vectors/k4/cwm_a2.mem", coeff_mem[7]);
+        $readmemh("verif/vectors/k4/cwm_a3.mem", coeff_mem[8]);
+        $readmemh("verif/vectors/k4/cwm_s0.mem", coeff_mem[0]);
+        $readmemh("verif/vectors/k4/cwm_s1.mem", coeff_mem[1]);
+        $readmemh("verif/vectors/k4/cwm_s2.mem", coeff_mem[2]);
+        $readmemh("verif/vectors/k4/cwm_s3.mem", coeff_mem[3]);
+        $readmemh("verif/vectors/k4/cwm_e.mem",  coeff_mem[4]);
+        $readmemh("verif/vectors/k4/cwm_out.mem", expected);
+
+        primary_poly_id_i = 0;
+        aux_poly_id_i     = 0;
+        cwm_num_terms_i   = 4;  // k=4 terms
+
+        run_pau(PE_MODE_CWM);
+
+        mismatches = compare_results("CWM_K4", 9);
+        if (mismatches == 0) begin
+            $display("[PASS] CWM k=4: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] CWM k=4: %0d coefficient mismatches.", mismatches);
+            total_fail++;
+        end
+
+        repeat (10) @(posedge clk);
+
+        // ----------------------------------------------------------------
         // Summary
         // ----------------------------------------------------------------
         $display("\n==================================================");
