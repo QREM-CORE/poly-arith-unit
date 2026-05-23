@@ -363,6 +363,27 @@ module poly_arith_unit_tb;
                     dut.u_row_accum.drain0_o,
                     dut.u_row_accum.drain1_o);
             end
+
+            // Tail trace: last few accumulator writes (pair >= 119)
+            if (dut.u_row_accum.acc_fire_i && dut.u_row_accum.pair_idx_i >= 7'd119) begin
+                $display("[CWM-TAIL][cc=%0d] ACC pair=%0d cwm0=%03x cwm1=%03x",
+                    cycle_cnt,
+                    dut.u_row_accum.pair_idx_i,
+                    dut.u_row_accum.cwm0_i,
+                    dut.u_row_accum.cwm1_i);
+            end
+
+            // Tail trace: last few drain writes (drain_idx >= 124)
+            if (dut.u_row_accum.drain_valid_o && dut.u_controller.cwm_drain_idx_r >= 7'd124) begin
+                $display("[CWM-TAIL][cc=%0d] DRAIN idx=%0d out0=%03x out1=%03x fuse=%b e0=%03x e1=%03x",
+                    cycle_cnt,
+                    dut.u_controller.cwm_drain_idx_r,
+                    dut.u_row_accum.drain0_o,
+                    dut.u_row_accum.drain1_o,
+                    dut.u_row_accum.fuse_e_i,
+                    dut.u_row_accum.e0_i,
+                    dut.u_row_accum.e1_i);
+            end
         end else begin
             cwm_issue_cnt  <= 0;
             cwm_pe_out_cnt <= 0;
@@ -417,8 +438,9 @@ module poly_arith_unit_tb;
         @(posedge clk);
         while (!done_o) @(posedge clk);
         test_running = 0;
-        // One extra cycle to allow final writeback to settle
-        @(posedge clk);
+        // Wait 3 extra cycles to allow final writeback pipeline to drain
+        // (CWM drain has 2 pending beats after done_o; NTT/INTT need 1)
+        repeat (3) @(posedge clk);
     endtask
 
     // Compare coeff_mem[poly_id] vs expected

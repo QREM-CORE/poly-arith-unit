@@ -749,7 +749,9 @@ module pau_controller #(
     //   RUN   : no PE writeback is expected yet, so the value is unused.
     //   DRAIN : read e_hat (1cc) -> fuse/output register in mac_row_accum (1cc)
     //           -> writeback, therefore 2cc from read issue to wr_en.
-    assign cmi_wb_latency_o   = ((op_r == PE_MODE_CWM) && (state_r == S_DRAIN)) ? 4'd2 : wb_lat;
+    assign cmi_wb_latency_o   = ((op_r == PE_MODE_CWM) &&
+                                 ((state_r == S_DRAIN) || (state_r == S_DONE) ||
+                                  (state_r == S_IDLE))) ? 4'd2 : wb_lat;
 
     // Expose the row-accumulator control plane so poly_arith_unit can delay/align it
     // to the real CWM datapath latency.
