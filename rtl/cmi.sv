@@ -293,8 +293,8 @@ module cmi #(
 `ifndef SYNTHESIS
     always_ff @(posedge clk) begin
         if (!rst) begin
-            if (aux_rd_accept && (|pau_aux_rd_lane_valid_o[3:2])) begin
-                $error("CMI aux read currently expects only request lanes 0/1 to be active, got lane_valid=%b",
+            if (aux_rd_accept && cwm_mode_i && (|pau_aux_rd_lane_valid_o[3:2])) begin
+                $error("CMI aux read currently expects only request lanes 0/1 to be active in CWM mode, got lane_valid=%b",
                        pau_aux_rd_lane_valid_o);
             end
 
@@ -342,7 +342,7 @@ module cmi #(
                                aux_req_poly_id_r, pau_aux_rd_poly_id_i);
                     end
 
-                    for (int dst = 0; dst < 2; dst++) begin
+                    for (int dst = 0; dst < 4; dst++) begin
                         if (aux_req_valid_r[dst] && !aux_req_match[dst]) begin
                             $error("CMI auxiliary lane %0d missing match for requested idx=%0d", dst,
                                    aux_req_idx_r[dst]);

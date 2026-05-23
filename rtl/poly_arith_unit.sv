@@ -38,6 +38,7 @@ module poly_arith_unit #(
     input  logic [POLY_ID_WIDTH-1:0] primary_poly_id_i,
     input  logic [POLY_ID_WIDTH-1:0] aux_poly_id_i,
     input  logic [POLY_ID_WIDTH-1:0] cwm_num_terms_i,
+    input  logic             is_sub_i,
     output logic       done_o,
 
     // ---- Memory Subsystem PAU Port ----
@@ -431,7 +432,7 @@ module poly_arith_unit #(
         .rst                (rst),
         .valid_i            (pe_valid),
         .ctrl_i             (pe_ctrl),
-        .mode_i             (is_radix2_pe),
+        .mode_i             ((pe_ctrl == PE_MODE_ADDSUB) ? is_sub_i : is_radix2_pe),
         .op_a0_i            (coeff_from_cmi[0][COEFF_WIDTH-1:0]),
         .op_a1_i            (coeff_from_cmi[1][COEFF_WIDTH-1:0]),
         .op_a2_i            ((pe_ctrl == PE_MODE_CWM) ? aux_coeff_from_cmi[0][COEFF_WIDTH-1:0] : coeff_from_cmi[2][COEFF_WIDTH-1:0]),

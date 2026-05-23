@@ -46,6 +46,7 @@ module poly_arith_unit_tb;
     logic [POLY_ID_WIDTH-1:0] primary_poly_id_i = '0;
     logic [POLY_ID_WIDTH-1:0] aux_poly_id_i     = '0;
     logic [POLY_ID_WIDTH-1:0] cwm_num_terms_i   = '0;
+    logic         is_sub_i         = 0;
     logic         done_o;
 
     // Primary memory port (DUT → TB)
@@ -99,6 +100,7 @@ module poly_arith_unit_tb;
         .primary_poly_id_i      (primary_poly_id_i),
         .aux_poly_id_i          (aux_poly_id_i),
         .cwm_num_terms_i        (cwm_num_terms_i),
+        .is_sub_i               (is_sub_i),
         .done_o                 (done_o),
         .pau_req_o              (pau_req_o),
         .pau_rd_en_o            (pau_rd_en_o),
@@ -783,6 +785,66 @@ module poly_arith_unit_tb;
             total_pass++;
         end else begin
             $display("[FAIL] CWM Zero Noise: %0d coefficient mismatches.", mismatches);
+            total_fail++;
+        end
+
+        repeat (10) @(posedge clk);
+
+        // ----------------------------------------------------------------
+        // Test 11: ADDSUB (Addition)
+        //   poly_id 0 = a
+        //   poly_id 1 = b
+        //   result    = a + b
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 11: ADDSUB (Addition) ===");
+        clear_all_polys();
+        load_coeff_mem("verif/vectors/k2/add_a.mem", 0);
+        load_coeff_mem("verif/vectors/k2/add_b.mem", 1);
+        $readmemh("verif/vectors/k2/add_out.mem", expected);
+
+        primary_poly_id_i = 0;
+        aux_poly_id_i     = 1;
+        cwm_num_terms_i   = 0;
+        is_sub_i          = 0;
+
+        run_pau(PE_MODE_ADDSUB);
+
+        mismatches = compare_results("ADD", 0);
+        if (mismatches == 0) begin
+            $display("[PASS] Addition: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] Addition: %0d coefficient mismatches.", mismatches);
+            total_fail++;
+        end
+
+        repeat (10) @(posedge clk);
+
+        // ----------------------------------------------------------------
+        // Test 12: ADDSUB (Subtraction)
+        //   poly_id 0 = a
+        //   poly_id 1 = b
+        //   result    = a - b
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 12: ADDSUB (Subtraction) ===");
+        clear_all_polys();
+        load_coeff_mem("verif/vectors/k2/sub_a.mem", 0);
+        load_coeff_mem("verif/vectors/k2/sub_b.mem", 1);
+        $readmemh("verif/vectors/k2/sub_out.mem", expected);
+
+        primary_poly_id_i = 0;
+        aux_poly_id_i     = 1;
+        cwm_num_terms_i   = 0;
+        is_sub_i          = 1;
+
+        run_pau(PE_MODE_ADDSUB);
+
+        mismatches = compare_results("SUB", 0);
+        if (mismatches == 0) begin
+            $display("[PASS] Subtraction: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] Subtraction: %0d coefficient mismatches.", mismatches);
             total_fail++;
         end
 
