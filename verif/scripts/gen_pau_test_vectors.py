@@ -97,6 +97,22 @@ def gen_cwm_vectors(k_dir, k):
     write_mem(f"{k_dir}/cwm_max_e.mem", e_max)
     write_mem(f"{k_dir}/cwm_max_out.mem", t_hat_final_max)
 
+    # Zero Noise (e = 0)
+    A_row_zero = [[random.randint(0, q-1) for _ in range(256)] for _ in range(k)]
+    s_zero = [[random.randint(0, q-1) for _ in range(256)] for _ in range(k)]
+    e_zero = [0] * 256
+
+    t_hat_zero = [0] * 256
+    for j in range(k):
+        prod = MultiplyNTTs(A_row_zero[j], s_zero[j])
+        t_hat_zero = [(t + p) % q for t, p in zip(t_hat_zero, prod)]
+        write_mem(f"{k_dir}/cwm_zero_a{j}.mem", A_row_zero[j])
+        write_mem(f"{k_dir}/cwm_zero_s{j}.mem", s_zero[j])
+
+    t_hat_final_zero = [(t + ej) % q for t, ej in zip(t_hat_zero, e_zero)]
+    write_mem(f"{k_dir}/cwm_zero_e.mem", e_zero)
+    write_mem(f"{k_dir}/cwm_zero_out.mem", t_hat_final_zero)
+
     if k == 2:
         # Generate the special k=1 verification vector for the testbench
         # t_hat_k1 = A_0 * s_0 + e

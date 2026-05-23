@@ -748,6 +748,38 @@ module poly_arith_unit_tb;
         repeat (10) @(posedge clk);
 
         // ----------------------------------------------------------------
+        // Test 10: CWM Zero Noise (e = 0) k=2
+        //   poly_id 0,1 = s_0, s_1 (random)
+        //   poly_id 5,6 = A_0, A_1 (random)
+        //   poly_id 4   = e (all 0)
+        // ----------------------------------------------------------------
+        $display("\n=== TEST 10: CWM Zero Noise (e = 0) ===");
+        clear_all_polys();
+        $readmemh("verif/vectors/k2/cwm_zero_a0.mem", coeff_mem[5]);
+        $readmemh("verif/vectors/k2/cwm_zero_a1.mem", coeff_mem[6]);
+        $readmemh("verif/vectors/k2/cwm_zero_s0.mem", coeff_mem[0]);
+        $readmemh("verif/vectors/k2/cwm_zero_s1.mem", coeff_mem[1]);
+        $readmemh("verif/vectors/k2/cwm_zero_e.mem",  coeff_mem[4]);
+        $readmemh("verif/vectors/k2/cwm_zero_out.mem", expected);
+
+        primary_poly_id_i = 0;
+        aux_poly_id_i     = 0;
+        cwm_num_terms_i   = 2;  // k=2 terms
+
+        run_pau(PE_MODE_CWM);
+
+        mismatches = compare_results("CWM_ZERO_NOISE_K2", 9);
+        if (mismatches == 0) begin
+            $display("[PASS] CWM Zero Noise: all 256 coefficients match.");
+            total_pass++;
+        end else begin
+            $display("[FAIL] CWM Zero Noise: %0d coefficient mismatches.", mismatches);
+            total_fail++;
+        end
+
+        repeat (10) @(posedge clk);
+
+        // ----------------------------------------------------------------
         // Summary
         // ----------------------------------------------------------------
         $display("\n==================================================");
