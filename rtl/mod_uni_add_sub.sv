@@ -36,23 +36,17 @@ module mod_uni_add_sub(
     logic [11:0] result_comb;
 
     always_comb begin
-        // =====================================================================
-        // 1. Parallel Addition and Subtraction
-        // =====================================================================
-
         // Add Path
         sum = {2'b0, op1_i} + {2'b0, op2_i};
-        sum_minus_q = sum - 14'(Q);
+        sum_minus_q = {2'b0, op1_i} + {2'b0, op2_i} - 14'(Q);
         add_res = sum_minus_q[13] ? sum[11:0] : sum_minus_q[11:0];
 
         // Sub Path
         diff = {2'b0, op1_i} - {2'b0, op2_i};
-        diff_plus_q = diff + 14'(Q);
+        diff_plus_q = {2'b0, op1_i} - {2'b0, op2_i} + 14'(Q);
         sub_res = diff[13] ? diff_plus_q[11:0] : diff[11:0];
 
-        // =====================================================================
-        // 2. Final Mux
-        // =====================================================================
+        // Final Mux
         result_comb = is_sub_i ? sub_res : add_res;
     end
 
