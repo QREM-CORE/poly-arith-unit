@@ -695,13 +695,14 @@ module pau_controller #(
 
     // Keep the PE radix mode alive for the full controller-owned pass lifetime,
     // including the drain window after the final issue beat.
-    assign tf_start_o         = (state_r == S_SETUP) && pass_uses_tf;
+    assign tf_start_o         = ((state_r == S_SETUP) && pass_uses_tf) ||
+                                ((state_r == S_RUN) && (op_r == PE_MODE_CWM) && (issue_addr_r == ZERO8));
     // CWM consumes 128 coefficient pairs but reuses each 64-entry omega value
     // for two consecutive issues. Advancing every other accepted issue keeps
     // the twiddle stream aligned with the current single-basecase PE datapath.
     assign tf_step_o          = pass_uses_tf &&
                                 issue_fire &&
-                                ((op_r != PE_MODE_CWM) || !issue_addr_r[0]);
+                                ((op_r != PE_MODE_CWM) || issue_addr_r[0]);
     assign pass_is_radix2_o   = pass_is_radix2 &&
                                 ((state_r == S_RUN) || (state_r == S_DRAIN));
     assign pass_idx_o         = pass_idx_r;
@@ -749,7 +750,9 @@ module pau_controller #(
     //   RUN   : no PE writeback is expected yet, so the value is unused.
     //   DRAIN : read e_hat (1cc) -> fuse/output register in mac_row_accum (1cc)
     //           -> writeback, therefore 2cc from read issue to wr_en.
-    assign cmi_wb_latency_o   = ((op_r == PE_MODE_CWM) && (state_r == S_DRAIN)) ? 4'd2 : wb_lat;
+    assign cmi_wb_latency_o   = ((op_r == PE_MODE_CWM) &&
+                                 ((state_r == S_DRAIN) || (state_r == S_DONE) ||
+                                  (state_r == S_IDLE))) ? 4'd2 : wb_lat;
 
     // Expose the row-accumulator control plane so poly_arith_unit can delay/align it
     // to the real CWM datapath latency.

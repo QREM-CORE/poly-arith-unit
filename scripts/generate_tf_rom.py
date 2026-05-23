@@ -70,3 +70,19 @@ print("\n=== R4INTT_ROM ===")
 for idx, (w1, w0, w2) in enumerate(r4_intt_rom):
     pass_label = "Pass 1" if idx < 16 else ("Pass 2" if idx < 20 else "Pass 3")
     print(f"        {{12'd{w1:<4}, 12'd{w0:<4}, 12'd{w2:<4}}},  // [{idx:>2}] {pass_label}")
+
+# OMEGA_ROM (Used for NTT Radix-2 and CWM)
+omega_rom = [get_zeta(64 + b) for b in range(64)]
+print("\n=== OMEGA_ROM ===")
+for i in range(0, 64, 8):
+    chunk = omega_rom[i:i+8]
+    formatted = ", ".join([f"12'd{w:<4}" for w in chunk])
+    print(f"        {formatted},")
+
+# OMEGA_INV_ROM (Used for INTT Radix-2)
+omega_inv_rom = [(-get_zeta(127 - b) * INV2) % Q for b in range(64)]
+print("\n=== OMEGA_INV_ROM ===")
+for i in range(0, 64, 8):
+    chunk = omega_inv_rom[i:i+8]
+    formatted = ", ".join([f"12'd{w:<4}" for w in chunk])
+    print(f"        {formatted},")
