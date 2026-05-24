@@ -5,7 +5,7 @@
 ![Simulation](https://img.shields.io/badge/Simulation-Modelsim%20%7C%20Verilator-blueviolet)
 ![PE-Architecture](https://img.shields.io/badge/PE-Reconfigurable_Radix--4%2F2-ff69b4)
 ![Target](https://img.shields.io/badge/Target-ASIC%2FFPGA-orange)
-![Status](https://img.shields.io/badge/Status-WIP-yellow)
+![Status](https://img.shields.io/badge/Status-Verified-green)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 This repository contains the SystemVerilog RTL for a highly optimized Polynomial Arithmetic Unit, designed to accelerate the core mathematical operations required by the NIST FIPS 203 (ML-KEM / Kyber) post-quantum cryptography standard.
@@ -43,7 +43,13 @@ The control plane for Number Theoretic Transforms, managing the deterministic lo
 * `tf_rom.sv`: A highly compressed, 4-ROM memory architecture storing the forward twiddle factors, inverse twiddle factors, and $\omega_4$ constants. Utilizes a pre-negation trick for INTT to save physical subtractors in the datapath.
 * `tf_addr_gen.sv`: A standalone, FSM-driven address generator that mimics the nested loop structures of the Cooley-Tukey and Gentleman-Sande schedules. It operates on a "Pass-at-a-Time" basis to allow the top-level controller to safely flush pipelines and swap memory pointers.
 
-### 4. Utilities
+### 4. Top-level & Control
+The orchestration logic interfacing the arithmetic core with the external memory subsystem.
+* `poly_arith_unit.sv`: Top-level wrapper managing control interfaces, parameters, and routing signals between memory and processing units.
+* `pau_controller.sv`: Central FSM managing passes, address stride generation, pipeline latencies, writeback phases, and execution sequencing.
+* `cmi.sv` (Conflict-free Memory Interface): Decodes host memory descriptors and handles parallel 4-lane data accesses.
+
+### 5. Utilities
 * `poly_arith_pkg.sv`: Global package containing operation opcodes (`pe_mode_e`), typedefs (`coeff_t`), and hardware constants.
 * `delay_n.sv`: Configurable shift-register pipeline delays used for data synchronization.
 
@@ -52,7 +58,7 @@ The control plane for Number Theoretic Transforms, managing the deterministic lo
 - [x] PE 0-3 internal routing and structural synthesis
 - [x] Twiddle Factor ROM and Address Generator FSM
 - [x] Cycle-accurate testbenches for NTT/INTT schedules
-- [ ] Top-level AU (Arithmetic Unit) Controller integration
+- [x] Top-level AU (Arithmetic Unit) Controller integration
 
 ## 📚 References
 * NIST FIPS 203: Module-Lattice-Based Key-Encapsulation Mechanism Standard.
