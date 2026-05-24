@@ -76,10 +76,9 @@ module pe1 (
     coeff_t delay_3_v1_data_i, delay_3_v1_data_o;
 
     // ============= Arithmetic Module Wires =============
-    coeff_t mod_add_op1_i, mod_add_op2_i, mod_add_result_o;
+    coeff_t mod_add_res_0, mod_add_res_1, mod_add_result_o;
     coeff_t mod_div_by_2_op_i, mod_div_by_2_op_o;
-    coeff_t mod_uni_add_sub_op1_i, mod_uni_add_sub_op2_i, mod_uni_add_sub_result_o;
-    logic   mod_uni_add_sub_is_sub_i;
+    coeff_t mod_uni_add_sub_res_0, mod_uni_add_sub_res_1, mod_uni_add_sub_result_o;
 
     // =========================================================================
     // Delay Register Instantiations
@@ -146,16 +145,22 @@ module pe1 (
     // =========================================================================
 
     // -------- Modular Adder Instantiation --------
-    mod_add u_mod_add (
+    mod_add u_mod_add_0 (
         .clk        (clk),
         .rst        (rst),
-        .op1_i      (mod_add_op1_i),
-        .op2_i      (mod_add_op2_i),
-
-        .result_o   (mod_add_result_o)
+        .op1_i      (a1_i),
+        .op2_i      (c1_i),
+        .result_o   (mod_add_res_0)
     );
-    assign mod_add_op1_i    = a1_i;
-    assign mod_add_op2_i    = ctrl_i[1] ? b1_i : c1_i;
+
+    mod_add u_mod_add_1 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (a1_i),
+        .op2_i      (b1_i),
+        .result_o   (mod_add_res_1)
+    );
+    assign mod_add_result_o = ctrl_i[1] ? mod_add_res_1 : mod_add_res_0;
 
     // -------- Modular Divider2 Instantiation --------
     mod_div_by_2 u_mod_div_by_2 (
@@ -165,17 +170,24 @@ module pe1 (
     assign mod_div_by_2_op_i = mod_add_result_o;
 
     // -------- Modular Unified Add/Sub Instantiation --------
-    mod_uni_add_sub u_uni_add_sub(
+    mod_uni_add_sub u_uni_add_sub_0(
         .clk        (clk),
         .rst        (rst),
-        .op1_i      (mod_uni_add_sub_op1_i),
-        .op2_i      (mod_uni_add_sub_op2_i),
-        .is_sub_i   (mod_uni_add_sub_is_sub_i),
-        .result_o   (mod_uni_add_sub_result_o)
+        .op1_i      (c0_i),
+        .op2_i      (b1_i),
+        .is_sub_i   (1'b0),
+        .result_o   (mod_uni_add_sub_res_0)
     );
-    assign mod_uni_add_sub_op1_i = ctrl_i[1] ? a1_i : c0_i;
-    assign mod_uni_add_sub_op2_i = b1_i;
-    assign mod_uni_add_sub_is_sub_i = ctrl_i[1];
+
+    mod_uni_add_sub u_uni_add_sub_1(
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (a1_i),
+        .op2_i      (b1_i),
+        .is_sub_i   (1'b1),
+        .result_o   (mod_uni_add_sub_res_1)
+    );
+    assign mod_uni_add_sub_result_o = ctrl_i[1] ? mod_uni_add_sub_res_1 : mod_uni_add_sub_res_0;
 
     // =========================================================================
     // PE Outputs

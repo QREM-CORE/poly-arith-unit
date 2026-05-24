@@ -181,7 +181,7 @@ module mod_mul (
     // Since 6396 < 2*Q (6658), we only need to subtract Q once.
     logic [12:0] final_sum;
     logic [12:0] final_sub;
-    
+
     assign final_sum = stage2_sum_11_0 + lut_val_13_12;
     assign final_sub = stage2_sum_11_0 + lut_val_13_12 - 13'(Q);
 

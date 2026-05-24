@@ -84,31 +84,27 @@ module pe0 (
 
     // (delay_1_add and delay_1_sub registers were removed via retiming)
 
-    // ============= Arithmetic Module Wires =============
     // -------- Modular Adder Logic --------
-    // Inputs
-    coeff_t mod_add_op1_i;
-    coeff_t mod_add_op2_i;
-    // Outputs
-    coeff_t mod_add_result_o;
+    coeff_t mod_add_res_0;
+    coeff_t mod_add_res_1;
 
     // -------- Modular Subtractor Logic --------
-    // Inputs
-    coeff_t mod_sub_op1_i;
-    coeff_t mod_sub_op2_i;
-    // Outputs
-    coeff_t mod_sub_result_o;
+    coeff_t mod_sub_res_0;
+    coeff_t mod_sub_res_1;
+    coeff_t mod_sub_res_cwm;
 
     // -------- Modular Multiplier Logic --------
-    // Inputs
     coeff_t mod_mul_op1_i;
     coeff_t mod_mul_op2_i;
-    // Outputs
     coeff_t mod_mul_result_o;
 
     // -------- Modular Divider2 Logic --------
     coeff_t mod_div_by_2_op_i;
     coeff_t mod_div_by_2_op_o;
+
+    // -------- Muxed Arithmetic Outputs --------
+    coeff_t mod_add_result_o;
+    coeff_t mod_sub_result_o;
 
     // =========================================================================
     // Delay Register Instantiations
@@ -194,40 +190,54 @@ module pe0 (
     // Arithmetic Module Instantiations
     // =========================================================================
 
-    // -------- Modular Adder Instantiation --------
-    mod_add u_mod_add (
+    // -------- Modular Adder Instantiations --------
+    mod_add u_mod_add_0 (
         .clk        (clk),
         .rst        (rst),
-        .op1_i      (mod_add_op1_i),
-        .op2_i      (mod_add_op2_i),
-
-        .result_o   (mod_add_result_o)
+        .op1_i      (delay_3_data_o),
+        .op2_i      (mod_mul_result_o),
+        .result_o   (mod_add_res_0)
     );
-    assign mod_add_op1_i    = ctrl_i[0] ? a0_i : delay_3_data_o;
-    assign mod_add_op2_i    = ctrl_i[0] ? b0_i : mod_mul_result_o;
 
-    // -------- Modular Subtractor Instantiation --------
-    mod_sub u_mod_sub (
+    mod_add u_mod_add_1 (
         .clk        (clk),
         .rst        (rst),
-        .op1_i      (mod_sub_op1_i),
-        .op2_i      (mod_sub_op2_i),
-
-        .result_o   (mod_sub_result_o)
+        .op1_i      (a0_i),
+        .op2_i      (b0_i),
+        .result_o   (mod_add_res_1)
     );
+
+    assign mod_add_result_o = ctrl_i[0] ? mod_add_res_1 : mod_add_res_0;
+
+    // -------- Modular Subtractor Instantiations --------
+    mod_sub u_mod_sub_0 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (delay_3_data_o),
+        .op2_i      (mod_mul_result_o),
+        .result_o   (mod_sub_res_0)
+    );
+
+    mod_sub u_mod_sub_1 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (a0_i),
+        .op2_i      (b0_i),
+        .result_o   (mod_sub_res_1)
+    );
+
+    mod_sub u_mod_sub_cwm (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (mod_mul_result_o),
+        .op2_i      (delay_3_data_o),
+        .result_o   (mod_sub_res_cwm)
+    );
+
     always_comb begin
         case(ctrl_i)
-            // Do (bottom_input - top_input) for CWM subtractor
-            PE_MODE_CWM : begin
-                mod_sub_op1_i = mod_mul_result_o;
-                mod_sub_op2_i = delay_3_data_o;
-            end
-
-            // Do (top_input - bottom_input) for everything else
-            default : begin
-                mod_sub_op1_i = ctrl_i[0] ? a0_i : delay_3_data_o;
-                mod_sub_op2_i = ctrl_i[0] ? b0_i : mod_mul_result_o;
-            end
+            PE_MODE_CWM : mod_sub_result_o = mod_sub_res_cwm;
+            default     : mod_sub_result_o = ctrl_i[0] ? mod_sub_res_1 : mod_sub_res_0;
         endcase
     end
 

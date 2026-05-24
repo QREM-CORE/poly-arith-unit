@@ -113,17 +113,10 @@ module pe2 (
     coeff_t mod_mul_2_result_o;
 
     // -------- Modular Adder Logic --------
-    coeff_t mod_add_op1_i;
-    coeff_t mod_add_op2_i;
-    // Outputs
-    coeff_t mod_add_result_o;
+    coeff_t mod_add_res_0, mod_add_res_1, mod_add_result_o;
 
     // -------- Modular Subtractor Logic --------
-    // Inputs
-    coeff_t mod_sub_op1_i;
-    coeff_t mod_sub_op2_i;
-    // Outputs
-    coeff_t mod_sub_result_o;
+    coeff_t mod_sub_res_0, mod_sub_res_1, mod_sub_result_o;
 
     // U2 input mux
     coeff_t u2_mux_i;
@@ -241,28 +234,40 @@ module pe2 (
     assign mod_mul_2_op2_i = ctrl_i[0] ? mod_sub_result_o : b2_i;
 
     // -------- Modular Adder Instantiation --------
-    mod_add u_mod_add (
+    mod_add u_mod_add_0 (
         .clk        (clk),
         .rst        (rst),
-        .op1_i      (mod_add_op1_i),
-        .op2_i      (mod_add_op2_i),
-
-        .result_o   (mod_add_result_o)
+        .op1_i      (mod_mul_1_result_o),
+        .op2_i      (mod_mul_2_result_o),
+        .result_o   (mod_add_res_0)
     );
-    assign mod_add_op1_i    = ctrl_i[0] ? a2_i : mod_mul_1_result_o;
-    assign mod_add_op2_i    = ctrl_i[0] ? b2_i : mod_mul_2_result_o;
+
+    mod_add u_mod_add_1 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (a2_i),
+        .op2_i      (b2_i),
+        .result_o   (mod_add_res_1)
+    );
+    assign mod_add_result_o = ctrl_i[0] ? mod_add_res_1 : mod_add_res_0;
 
     // -------- Modular Subtractor Instantiation --------
-    mod_sub u_mod_sub (
+    mod_sub u_mod_sub_0 (
         .clk        (clk),
         .rst        (rst),
-        .op1_i      (mod_sub_op1_i),
-        .op2_i      (mod_sub_op2_i),
-
-        .result_o   (mod_sub_result_o)
+        .op1_i      (mod_mul_1_result_o),
+        .op2_i      (mod_mul_2_result_o),
+        .result_o   (mod_sub_res_0)
     );
-    assign mod_sub_op1_i    = ctrl_i[0] ? a2_i : mod_mul_1_result_o;
-    assign mod_sub_op2_i    = ctrl_i[0] ? b2_i : mod_mul_2_result_o;
+
+    mod_sub u_mod_sub_1 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (a2_i),
+        .op2_i      (b2_i),
+        .result_o   (mod_sub_res_1)
+    );
+    assign mod_sub_result_o = ctrl_i[0] ? mod_sub_res_1 : mod_sub_res_0;
 
     // =========================================================================
     // PE Outputs
