@@ -24,16 +24,14 @@ module mod_sub(
     output  coeff_t result_o
 );
 
-    logic [12:0] diff;
-    logic [12:0] diff_plus_q;
+    (* keep = "true" *) logic [12:0] diff;
     logic [11:0] result_comb;
 
     always_comb begin
         diff = {1'b0, op1_i} - {1'b0, op2_i};
-        diff_plus_q = {1'b0, op1_i} - {1'b0, op2_i} + 13'(Q);
 
         if (diff[12]) begin // negative, op1_i < op2_i
-            result_comb = diff_plus_q[11:0];
+            result_comb = diff[11:0] + 12'd3329;
         end else begin
             result_comb = diff[11:0];
         end

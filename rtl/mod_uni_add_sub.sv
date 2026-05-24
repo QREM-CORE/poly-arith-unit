@@ -25,12 +25,10 @@ module mod_uni_add_sub(
     output  coeff_t result_o
 );
 
-    logic [13:0] sum;
-    logic [13:0] sum_minus_q;
+    (* keep = "true" *) logic [13:0] sum;
     logic [11:0] add_res;
 
-    logic [13:0] diff;
-    logic [13:0] diff_plus_q;
+    (* keep = "true" *) logic [13:0] diff;
     logic [11:0] sub_res;
 
     logic [11:0] result_comb;
@@ -38,13 +36,19 @@ module mod_uni_add_sub(
     always_comb begin
         // Add Path
         sum = {2'b0, op1_i} + {2'b0, op2_i};
-        sum_minus_q = {2'b0, op1_i} + {2'b0, op2_i} - 14'(Q);
-        add_res = sum_minus_q[13] ? sum[11:0] : sum_minus_q[11:0];
+        if (sum >= 14'd3329) begin
+            add_res = sum[11:0] - 12'd3329;
+        end else begin
+            add_res = sum[11:0];
+        end
 
         // Sub Path
         diff = {2'b0, op1_i} - {2'b0, op2_i};
-        diff_plus_q = {2'b0, op1_i} - {2'b0, op2_i} + 14'(Q);
-        sub_res = diff[13] ? diff_plus_q[11:0] : diff[11:0];
+        if (diff[13]) begin
+            sub_res = diff[11:0] + 12'd3329;
+        end else begin
+            sub_res = diff[11:0];
+        end
 
         // Final Mux
         result_comb = is_sub_i ? sub_res : add_res;
