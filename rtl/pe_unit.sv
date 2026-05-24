@@ -343,27 +343,11 @@ module pe_unit (
                     pe0_b0_i = op_a2_i;   // X_2
                     pe0_w0_i = op_b0_i;   // w_2 (No delay, Stage 1)
 
-                    // CE1 Routing (Cross-PE Feedback)
-                    pe1_a1_i = pe0_u0_o;  // U0
-                    pe1_b1_i = pe2_u2_o;  // U2
-
                     // CE2 Routing
                     pe2_a2_i = op_a1_i;   // X_1
                     pe2_b2_i = op_a3_i;   // X_3
                     pe2_w1_i = op_b1_i;   // w_1 (No delay, Stage 1)
                     pe2_w2_i = op_b2_i;   // w_3 (No delay, Stage 1)
-
-                    // CE3 Routing (Cross-PE Feedback)
-                    pe3_a3_i = pe0_v0_o;  // V0
-                    pe3_b3_i = pe2_v2_o;  // V2
-                    pe3_tf_omega_4_i = op_b3_d4; // w_4^1 (SYNCHRONIZED: 4-Cycle Delay)
-
-                    // Outputs
-                    z0_o = pe1_u1_o;      // U1
-                    z1_o = pe1_v1_o;      // V1
-                    z2_o = pe3_u3_o;      // U3
-                    z3_o = pe3_v3_o;      // V3
-                    valid_o = pe1_valid_o & pe3_valid_o;
                 end else begin
                     // =========================================================
                     // RADIX-2 NTT MODE (Bypasses PE1/PE3 completely)
@@ -394,8 +378,24 @@ module pe_unit (
                     pe2_b2_i = op_a3_i;   // X3
                     pe2_w1_i = op_b1_i;   // Driven to 1
                     pe2_w2_i = op_b2_i;
+                end
 
-                    // Direct Outputs
+                // Unconditional assignments for PE1/PE3 to cut mode_i MUXes
+                pe1_a1_i = pe0_u0_o;
+                pe1_b1_i = pe2_u2_o;
+                pe3_a3_i = pe0_v0_o;
+                pe3_b3_i = pe2_v2_o;
+                pe3_tf_omega_4_i = op_b3_d4;
+
+                if (mode_i == 1'b0) begin
+                    // Outputs Radix-4
+                    z0_o = pe1_u1_o;      // U1
+                    z1_o = pe1_v1_o;      // V1
+                    z2_o = pe3_u3_o;      // U3
+                    z3_o = pe3_v3_o;      // V3
+                    valid_o = pe1_valid_o & pe3_valid_o;
+                end else begin
+                    // Direct Outputs Radix-2
                     z0_o = pe0_u0_o;
                     z1_o = pe0_v0_o;
                     z2_o = pe2_u2_o;
@@ -431,27 +431,11 @@ module pe_unit (
                     pe0_b0_i = pe1_u1_o;  // U1
                     pe0_w0_i = op_b0_d4;  // w_2^-1 (SYNCHRONIZED: 4-Cycle Delay)
 
-                    // CE1 Routing
-                    pe1_a1_i = op_a2_i;   // X_2
-                    pe1_b1_i = op_a3_i;   // X_3
-
                     // CE2 Routing (Cross-PE Feedback)
                     pe2_a2_i = pe3_v3_o;  // V3
                     pe2_b2_i = pe1_v1_o;  // V1
                     pe2_w1_i = op_b1_d4;  // w_1^-1 (SYNCHRONIZED: 4-Cycle Delay)
                     pe2_w2_i = op_b2_d4;  // w_3^-1 (SYNCHRONIZED: 4-Cycle Delay)
-
-                    // CE3 Routing
-                    pe3_a3_i = op_a0_i;   // X_0
-                    pe3_b3_i = op_a1_i;   // X_1
-                    pe3_tf_omega_4_i = op_b3_i; // w_4^-1 (No delay, Stage 1)
-
-                    // Outputs
-                    z0_o = pe0_u0_o;      // U0
-                    z1_o = pe2_u2_o;      // U2
-                    z2_o = pe0_v0_o;      // V0
-                    z3_o = pe2_v2_o;      // V2
-                    valid_o = pe0_valid_o & pe2_valid_o;
                 end else begin
                     // =========================================================
                     // RADIX-2 INTT MODE (Bypasses PE1/PE3 completely)
@@ -483,8 +467,24 @@ module pe_unit (
                     pe2_b2_i = op_a3_i;   // X3
                     pe2_w1_i = op_b1_i;   // Driven to 2^-1
                     pe2_w2_i = op_b2_i;
+                end
 
-                    // Direct Outputs
+                // Unconditional assignments for PE1/PE3 to cut mode_i MUXes
+                pe1_a1_i = op_a2_i;
+                pe1_b1_i = op_a3_i;
+                pe3_a3_i = op_a0_i;
+                pe3_b3_i = op_a1_i;
+                pe3_tf_omega_4_i = op_b3_i;
+
+                if (mode_i == 1'b0) begin
+                    // Outputs Radix-4
+                    z0_o = pe0_u0_o;      // U0
+                    z1_o = pe2_u2_o;      // U2
+                    z2_o = pe0_v0_o;      // V0
+                    z3_o = pe2_v2_o;      // V2
+                    valid_o = pe0_valid_o & pe2_valid_o;
+                end else begin
+                    // Direct Outputs Radix-2
                     z0_o = pe0_u0_o;
                     z1_o = pe0_v0_o;
                     z2_o = pe2_u2_o;
