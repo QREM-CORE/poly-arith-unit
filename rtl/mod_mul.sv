@@ -71,7 +71,7 @@ module mod_mul (
 
     // 3. First Reduction (Parallel LUTs)
     // LUT Outputs: These hold (Chunk_Value * 2^Shift) mod 3329
-    logic [11:0] lut_val_15_12, lut_val_19_16, lut_val_23_20;
+    logic [11:0] lut_val_15_12, lut_val_19_16;
 
     always_comb begin
         // LUT [15:12] (Weight 2^12 mod Q = 767)
@@ -100,8 +100,41 @@ module mod_mul (
             default: lut_val_19_16 = '0;
         endcase
 
-        // LUT [23:20] (Weight 2^20 mod Q = 3270)
-        case(chunk_23_20)
+        // LUT [23:20] is deferred to Cycle 2 to reduce Cycle 1 critical path
+    end
+
+    // Stage 1 Summation (Partial)
+    // We sum the partial residues from the lower 20 bits.
+    logic [13:0] stage1_sum_partial;
+    assign stage1_sum_partial = lut_val_19_16 + lut_val_15_12 + chunk_11_00;
+
+    // =========================================================================
+    // CYCLE 2: Pipeline Register (Pipeline Stage 2)
+    // =========================================================================
+    logic [13:0] stage2_sum_partial;
+    logic [3:0]  chunk_23_20_reg;
+    logic valid_reg2;
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            stage2_sum_partial <= '0;
+            chunk_23_20_reg    <= '0;
+            valid_reg2         <= 1'b0;
+        end else begin
+            stage2_sum_partial <= stage1_sum_partial;
+            chunk_23_20_reg    <= chunk_23_20;
+            valid_reg2         <= valid_reg1;
+        end
+    end
+
+    // =========================================================================
+    // CYCLE 2 Logic: Second Reduction (4-Mux & Correction)
+    // =========================================================================
+
+    // 0. Deferred LUT [23:20] from Cycle 1
+    logic [11:0] lut_val_23_20;
+    always_comb begin
+        case(chunk_23_20_reg)
             4'd0:    lut_val_23_20 = 12'd0;    4'd1:    lut_val_23_20 = 12'd3270;
             4'd2:    lut_val_23_20 = 12'd3211; 4'd3:    lut_val_23_20 = 12'd3152;
             4'd4:    lut_val_23_20 = 12'd3093; 4'd5:    lut_val_23_20 = 12'd3034;
@@ -114,26 +147,9 @@ module mod_mul (
         endcase
     end
 
-    // Stage 1 Summation
-    // We sum the partial residues.
-    logic [13:0] stage1_sum;
-    assign stage1_sum = lut_val_23_20 + lut_val_19_16 + lut_val_15_12 + chunk_11_00;
-
-    // =========================================================================
-    // CYCLE 2: Pipeline Register (Pipeline Stage 2)
-    // =========================================================================
+    // Complete the Stage 1 Summation
     logic [13:0] stage2_sum;
-    logic valid_reg2;
-
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            stage2_sum <= '0;
-            valid_reg2 <= 1'b0;
-        end else begin
-            stage2_sum <= stage1_sum;
-            valid_reg2 <= valid_reg1;
-        end
-    end
+    assign stage2_sum = stage2_sum_partial + lut_val_23_20;
 
     // =========================================================================
     // CYCLE 2 Logic: Second Reduction (4-Mux & Correction)
@@ -159,16 +175,15 @@ module mod_mul (
         endcase
     end
 
-    // 3. Final Addition
+    // 3. Final Addition & Subtraction (Flattened to parallel 3-operand math)
     // CRITICAL: Must be 13 bits.
     // Max Possible: 4095 (stage2_lower) + 2301 (lut_val) = 6396.
-    logic [12:0] final_sum;
-    assign final_sum = stage2_sum_11_0 + lut_val_13_12;
-
-    // 4. Final Subtraction Logic
     // Since 6396 < 2*Q (6658), we only need to subtract Q once.
+    logic [12:0] final_sum;
     logic [12:0] final_sub;
-    assign final_sub = final_sum - 13'(Q);
+    
+    assign final_sum = stage2_sum_11_0 + lut_val_13_12;
+    assign final_sub = stage2_sum_11_0 + lut_val_13_12 - 13'(Q);
 
     logic [11:0] final_result_wire;
     // If final_sub[12] is 1 (Negative/Underflow), result < Q, so keep final_sum.
