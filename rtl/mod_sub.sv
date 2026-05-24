@@ -30,7 +30,7 @@ module mod_sub(
 
     always_comb begin
         diff = {2'b0, op1_i} - {2'b0, op2_i};
-        diff_plus_q = diff + 14'(Q);
+        diff_plus_q = {2'b0, op1_i} - {2'b0, op2_i} + 14'(Q);
 
         if (diff[13]) begin // negative, op1_i < op2_i
             result_comb = diff_plus_q[11:0];

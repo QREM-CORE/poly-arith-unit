@@ -30,7 +30,7 @@ module mod_add(
 
     always_comb begin
         sum = {2'b0, op1_i} + {2'b0, op2_i};
-        sum_minus_q = sum - 14'(Q);
+        sum_minus_q = {2'b0, op1_i} + {2'b0, op2_i} - 14'(Q);
 
         if (sum_minus_q[13]) begin // sum < Q
             result_comb = sum[11:0];
