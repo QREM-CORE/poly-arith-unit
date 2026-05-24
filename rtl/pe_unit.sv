@@ -62,8 +62,9 @@ module pe_unit (
     input   pe_mode_e       ctrl_i,
 
     // 0 = Add (U), 1 = Sub (V) for ADD/SUB ctrl
+    input   logic           is_sub_i,
     // 0 = Radix 4, 1 = Radix 2 for NTT/INTT
-    input   logic           mode_i,
+    input   logic           is_radix2_i,
 
     // ==========================================
     // Primary Operand Bus (Fed by SRAM Bank A)
@@ -317,7 +318,7 @@ module pe_unit (
             end
 
             PE_MODE_NTT : begin
-                if (mode_i == 1'b0) begin
+                if (is_radix2_i == 1'b0) begin
                     // =========================================================
                     // RADIX-4 NTT MODE (Cascaded PEs)
                     // =========================================================
@@ -387,7 +388,7 @@ module pe_unit (
                 pe3_b3_i = pe2_v2_o;
                 pe3_tf_omega_4_i = op_b3_d4;
 
-                if (mode_i == 1'b0) begin
+                if (is_radix2_i == 1'b0) begin
                     // Outputs Radix-4
                     z0_o = pe1_u1_o;      // U1
                     z1_o = pe1_v1_o;      // V1
@@ -405,7 +406,7 @@ module pe_unit (
             end
 
             PE_MODE_INTT : begin
-                if (mode_i == 1'b0) begin
+                if (is_radix2_i == 1'b0) begin
                     // =========================================================
                     // RADIX-4 INTT MODE (Cascaded PEs)
                     // =========================================================
@@ -476,7 +477,7 @@ module pe_unit (
                 pe3_b3_i = op_a1_i;
                 pe3_tf_omega_4_i = op_b3_i;
 
-                if (mode_i == 1'b0) begin
+                if (is_radix2_i == 1'b0) begin
                     // Outputs Radix-4
                     z0_o = pe0_u0_o;      // U0
                     z1_o = pe2_u2_o;      // U2
@@ -525,8 +526,8 @@ module pe_unit (
                 pe3_a3_i = op_a3_i;
                 pe3_b3_i = op_b3_i;
 
-                // Outputs - Use the mode_i flag to select Add (U) or Sub (V)
-                if (mode_i == 1'b0) begin
+                // Outputs - Use the is_sub_i flag to select Add (U) or Sub (V)
+                if (is_sub_i == 1'b0) begin
                     // Addition Mode
                     z0_o = pe0_u0_o;
                     z1_o = pe1_u1_o;
