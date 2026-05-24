@@ -24,18 +24,19 @@ module mod_add(
     output  coeff_t result_o
 );
 
-    logic [13:0] sum;
-    logic [13:0] sum_minus_q;
+    logic [12:0] sum;
+    logic [12:0] sum_plus_c;
     logic [11:0] result_comb;
 
     always_comb begin
-        sum = {2'b0, op1_i} + {2'b0, op2_i};
-        sum_minus_q = {2'b0, op1_i} + {2'b0, op2_i} - 14'(Q);
+        sum = {1'b0, op1_i} + {1'b0, op2_i};
+        // 767 is 4096 - 3329. If sum >= 3329, sum_plus_c >= 4096 (bit 12 is 1).
+        sum_plus_c = {1'b0, op1_i} + {1'b0, op2_i} + 13'd767;
 
-        if (sum_minus_q[13]) begin // sum < Q
-            result_comb = sum[11:0];
+        if (sum_plus_c[12]) begin // sum >= Q
+            result_comb = sum_plus_c[11:0];
         end else begin
-            result_comb = sum_minus_q[11:0];
+            result_comb = sum[11:0];
         end
     end
 

@@ -263,7 +263,7 @@ module pe_unit (
         pe2_valid_i = 1'b0; pe3_valid_i = 1'b0;
         valid_o = 1'b0;
 
-        case(ctrl_i)
+        unique case(ctrl_i)
             PE_MODE_IDLE: begin
                 // Idle state, do nothing
             end

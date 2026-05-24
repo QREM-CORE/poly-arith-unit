@@ -24,15 +24,15 @@ module mod_sub(
     output  coeff_t result_o
 );
 
-    logic [13:0] diff;
-    logic [13:0] diff_plus_q;
+    logic [12:0] diff;
+    logic [12:0] diff_plus_q;
     logic [11:0] result_comb;
 
     always_comb begin
-        diff = {2'b0, op1_i} - {2'b0, op2_i};
-        diff_plus_q = {2'b0, op1_i} - {2'b0, op2_i} + 14'(Q);
+        diff = {1'b0, op1_i} - {1'b0, op2_i};
+        diff_plus_q = {1'b0, op1_i} - {1'b0, op2_i} + 13'(Q);
 
-        if (diff[13]) begin // negative, op1_i < op2_i
+        if (diff[12]) begin // negative, op1_i < op2_i
             result_comb = diff_plus_q[11:0];
         end else begin
             result_comb = diff[11:0];
