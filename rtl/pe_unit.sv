@@ -106,25 +106,25 @@ module pe_unit (
     // =========================================================================
 
     // -------- PE0 Wires --------
-    (* keep = "true" *) coeff_t     pe0_a0_i, pe0_b0_i, pe0_w0_i;
+    coeff_t     pe0_a0_i, pe0_b0_i, pe0_w0_i;
     coeff_t     pe0_u0_o, pe0_v0_o;
     pe_mode_e   pe0_ctrl_i;
     logic       pe0_valid_i, pe0_valid_o;
 
     // -------- PE1 Wires --------
-    (* keep = "true" *) coeff_t     pe1_a1_i, pe1_b1_i, pe1_c0_i, pe1_c1_i;
+    coeff_t     pe1_a1_i, pe1_b1_i, pe1_c0_i, pe1_c1_i;
     coeff_t     pe1_u1_o, pe1_v1_o;
     pe_mode_e   pe1_ctrl_i;
     logic       pe1_valid_i, pe1_valid_o;
 
     // -------- PE2 Wires --------
-    (* keep = "true" *) coeff_t     pe2_a2_i, pe2_b2_i, pe2_w1_i, pe2_w2_i;
+    coeff_t     pe2_a2_i, pe2_b2_i, pe2_w1_i, pe2_w2_i;
     coeff_t     pe2_u2_o, pe2_v2_o, pe2_m_o;
     pe_mode_e   pe2_ctrl_i;
     logic       pe2_valid_i, pe2_valid_o, pe2_valid_m_o;
 
     // -------- PE3 Wires --------
-    (* keep = "true" *) coeff_t     pe3_a3_i, pe3_b3_i, pe3_w3_i, pe3_tf_omega_4_i;
+    coeff_t     pe3_a3_i, pe3_b3_i, pe3_w3_i, pe3_tf_omega_4_i;
     coeff_t     pe3_u3_o, pe3_v3_o;
     pe_mode_e   pe3_ctrl_i;
     logic       pe3_valid_i, pe3_valid_o;
