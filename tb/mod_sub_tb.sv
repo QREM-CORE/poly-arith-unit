@@ -14,6 +14,7 @@ module mod_sub_tb();
     // Signals
     // ------------------------------------------------------
     logic          clk;
+    logic          rst;
     coeff_t        op1_i;
     coeff_t        op2_i;
     coeff_t        result_o;
@@ -36,13 +37,19 @@ module mod_sub_tb();
     // ------------------------------------------------------
     // Clock Generation
     // ------------------------------------------------------
-    initial clk = 0;
+    initial begin
+        clk = 0;
+        rst = 1;
+        #15 rst = 0;
+    end
     always #5 clk = ~clk; // 100MHz
 
     // ------------------------------------------------------
     // Instantiate DUT (Combinational)
     // ------------------------------------------------------
     mod_sub dut (
+        .clk      (clk),
+        .rst      (rst),
         .op1_i    (op1_i),
         .op2_i    (op2_i),
         .result_o (result_o)
@@ -80,14 +87,22 @@ module mod_sub_tb();
         end
     endtask
 
+    transaction_t expected_q_delayed[$];
+
+    always @(posedge clk) begin
+        if (expected_q.size() > 0) begin
+            expected_q_delayed.push_back(expected_q.pop_front());
+        end
+    end
+
     // ------------------------------------------------------
     // Monitor / Checker (At Negedge)
     // ------------------------------------------------------
-    // Checks result immediately (0-cycle latency)
+    // Checks result 1 cycle later
     always @(negedge clk) begin
-        if (expected_q.size() > 0) begin
+        if (expected_q_delayed.size() > 0) begin
             transaction_t trans;
-            trans = expected_q.pop_front();
+            trans = expected_q_delayed.pop_front();
 
             if (result_o === trans.expected) begin
                 pass_count++;

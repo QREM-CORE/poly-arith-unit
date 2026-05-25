@@ -4,16 +4,18 @@
  * Target: FIPS 203 (ML-KEM / Kyber)
  *
  * Description:
- * Performs Combinational Modular Addition or Subtraction: (A +/- B) mod 3329.
+ * Performs Sequential Modular Addition or Subtraction: (A +/- B) mod 3329.
  *
- * Latency: 0 Clock Cycles (Combinational)
- * - Inputs should be registered at the PE level if pipelining is required.
+ * Latency: 1 Clock Cycle
  */
 
 import poly_arith_pkg::*;
 import qrem_global_pkg::*;
 
 module mod_uni_add_sub(
+    input   logic   clk,
+    input   logic   rst,
+
     // Inputs: Two 12-bit coefficients (0 to 3328)
     input   coeff_t op1_i,
     input   coeff_t op2_i,
@@ -23,41 +25,40 @@ module mod_uni_add_sub(
     output  coeff_t result_o
 );
 
-    // Internal signals for calculation
-    coeff_t         op2_final;
-    logic [12:0]    sum_raw;
-    logic [12:0]    sum_reduced;
+    (* keep = "true" *) logic [13:0] sum;
+    logic [11:0] add_res;
+
+    (* keep = "true" *) logic [13:0] diff;
+    logic [11:0] sub_res;
+
+    logic [11:0] result_comb;
 
     always_comb begin
-        // =====================================================================
-        // 1. Operand Preparation (Handle Subtraction)
-        // =====================================================================
-        // Optimization: A - B is implemented as A + (Q - B).
-        // If Adding: Use B.
-        // If Subtracting: Use (Q - B).
-        if (is_sub_i) begin
-            op2_final = 13'(Q) - op2_i;
+        // Add Path
+        sum = {2'b0, op1_i} + {2'b0, op2_i};
+        if (sum >= 14'd3329) begin
+            add_res = sum[11:0] - 12'd3329;
         end else begin
-            op2_final = op2_i;
+            add_res = sum[11:0];
         end
 
-        // =====================================================================
-        // 2. Unified Addition
-        // =====================================================================
-        // Max possible sum: 3328 + 3329 = 6657 (fits in 13 bits)
-        sum_raw = op1_i + op2_final;
-
-        // =====================================================================
-        // 3. Modular Reduction (Conditional Subtraction)
-        // =====================================================================
-        // If the sum exceeds Q, we wrap it back by subtracting Q.
-        sum_reduced = sum_raw - 13'(Q);
-
-        // Mux to select the correct result
-        if (sum_raw >= 13'(Q)) begin
-            result_o = sum_reduced[11:0];
+        // Sub Path
+        diff = {2'b0, op1_i} - {2'b0, op2_i};
+        if (diff[13]) begin
+            sub_res = diff[11:0] + 12'd3329;
         end else begin
-            result_o = sum_raw[11:0];
+            sub_res = diff[11:0];
+        end
+
+        // Final Mux
+        result_comb = is_sub_i ? sub_res : add_res;
+    end
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            result_o <= '0;
+        end else begin
+            result_o <= result_comb;
         end
     end
 

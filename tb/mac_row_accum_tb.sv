@@ -154,23 +154,27 @@ module mac_row_accum_tb;
             cwm0_i       = c0;
             cwm1_i       = c1;
 
+            @(posedge clk);
             #1;
+            // Input registers are now latched.
             debug_log = {debug_log, get_acc_debug({label, " pre"}, idx), "\n"};
             if (check_old) begin
                 expect_coeff({label, " acc0_old"}, dut.acc0_old, exp_old0);
                 expect_coeff({label, " acc1_old"}, dut.acc1_old, exp_old1);
             end
 
+            // Drop acc_fire_i so it's a 1-cycle pulse
+            clear_inputs();
+
             @(posedge clk);
             #1;
+            // Scratchpad memory is now updated.
             debug_log = {debug_log, get_acc_debug({label, " post"}, idx), "\n"};
             check_scratch(idx, exp_new0, exp_new1, label);
 
             if (error_count > entry_errors) begin
                 $display("%s", debug_log);
             end
-
-            clear_inputs();
         end
     endtask
 

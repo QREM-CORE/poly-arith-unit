@@ -82,39 +82,29 @@ module pe0 (
     coeff_t delay_3_data_i;
     coeff_t delay_3_data_o;
 
-    // -------- Delay 1 Addition Output Register --------
-    coeff_t delay_1_add_data_i;
-    coeff_t delay_1_add_data_o;
+    // (delay_1_add and delay_1_sub registers were removed via retiming)
 
-    // -------- Delay 1 Subtraction Output Register --------
-    coeff_t delay_1_sub_data_i;
-    coeff_t delay_1_sub_data_o;
-
-    // ============= Arithmetic Module Wires =============
     // -------- Modular Adder Logic --------
-    // Inputs
-    coeff_t mod_add_op1_i;
-    coeff_t mod_add_op2_i;
-    // Outputs
-    coeff_t mod_add_result_o;
+    coeff_t mod_add_res_0;
+    coeff_t mod_add_res_1;
 
     // -------- Modular Subtractor Logic --------
-    // Inputs
-    coeff_t mod_sub_op1_i;
-    coeff_t mod_sub_op2_i;
-    // Outputs
-    coeff_t mod_sub_result_o;
+    coeff_t mod_sub_res_0;
+    coeff_t mod_sub_res_1;
+    coeff_t mod_sub_res_cwm;
 
     // -------- Modular Multiplier Logic --------
-    // Inputs
     coeff_t mod_mul_op1_i;
     coeff_t mod_mul_op2_i;
-    // Outputs
     coeff_t mod_mul_result_o;
 
     // -------- Modular Divider2 Logic --------
     coeff_t mod_div_by_2_op_i;
     coeff_t mod_div_by_2_op_o;
+
+    // -------- Muxed Arithmetic Outputs --------
+    coeff_t mod_add_result_o;
+    coeff_t mod_sub_result_o;
 
     // =========================================================================
     // Delay Register Instantiations
@@ -194,66 +184,60 @@ module pe0 (
     );
     assign delay_3_data_i = ctrl_i[0] ? mod_div_by_2_op_o : a0_i;
 
-    // -------- Delay 1 Addition Output Register --------
-    delay_n #(
-        .DWIDTH (COEFF_WIDTH), // 12-bit
-        .DEPTH  (1)
-    ) u_delay_1_add (
-        .clk(clk),
-        .rst(rst),
-
-        .data_i(delay_1_add_data_i),
-        .data_o(delay_1_add_data_o)
-    );
-    assign delay_1_add_data_i = mod_add_result_o;
-
-    // -------- Delay 1 Subtraction Output Register --------
-    delay_n #(
-        .DWIDTH (COEFF_WIDTH), // 12-bit
-        .DEPTH  (1)
-    ) u_delay_1_sub (
-        .clk(clk),
-        .rst(rst),
-
-        .data_i(delay_1_sub_data_i),
-        .data_o(delay_1_sub_data_o)
-    );
-    assign delay_1_sub_data_i = mod_sub_result_o;
+    // (delay_1_add and delay_1_sub registers were removed via retiming)
 
     // =========================================================================
     // Arithmetic Module Instantiations
     // =========================================================================
 
-    // -------- Modular Adder Instantiation --------
-    mod_add u_mod_add (
-        .op1_i      (mod_add_op1_i),
-        .op2_i      (mod_add_op2_i),
-
-        .result_o   (mod_add_result_o)
+    // -------- Modular Adder Instantiations --------
+    mod_add u_mod_add_0 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (delay_3_data_o),
+        .op2_i      (mod_mul_result_o),
+        .result_o   (mod_add_res_0)
     );
-    assign mod_add_op1_i    = ctrl_i[0] ? a0_i : delay_3_data_o;
-    assign mod_add_op2_i    = ctrl_i[0] ? b0_i : mod_mul_result_o;
 
-    // -------- Modular Subtractor Instantiation --------
-    mod_sub u_mod_sub (
-        .op1_i      (mod_sub_op1_i),
-        .op2_i      (mod_sub_op2_i),
-
-        .result_o   (mod_sub_result_o)
+    mod_add u_mod_add_1 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (a0_i),
+        .op2_i      (b0_i),
+        .result_o   (mod_add_res_1)
     );
+
+    assign mod_add_result_o = ctrl_i[0] ? mod_add_res_1 : mod_add_res_0;
+
+    // -------- Modular Subtractor Instantiations --------
+    mod_sub u_mod_sub_0 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (delay_3_data_o),
+        .op2_i      (mod_mul_result_o),
+        .result_o   (mod_sub_res_0)
+    );
+
+    mod_sub u_mod_sub_1 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (a0_i),
+        .op2_i      (b0_i),
+        .result_o   (mod_sub_res_1)
+    );
+
+    mod_sub u_mod_sub_cwm (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (mod_mul_result_o),
+        .op2_i      (delay_3_data_o),
+        .result_o   (mod_sub_res_cwm)
+    );
+
     always_comb begin
         case(ctrl_i)
-            // Do (bottom_input - top_input) for CWM subtractor
-            PE_MODE_CWM : begin
-                mod_sub_op1_i = mod_mul_result_o;
-                mod_sub_op2_i = delay_3_data_o;
-            end
-
-            // Do (top_input - bottom_input) for everything else
-            default : begin
-                mod_sub_op1_i = ctrl_i[0] ? a0_i : delay_3_data_o;
-                mod_sub_op2_i = ctrl_i[0] ? b0_i : mod_mul_result_o;
-            end
+            PE_MODE_CWM : mod_sub_result_o = mod_sub_res_cwm;
+            default     : mod_sub_result_o = ctrl_i[0] ? mod_sub_res_1 : mod_sub_res_0;
         endcase
     end
 
@@ -270,21 +254,21 @@ module pe0 (
         .valid_o     ()
     );
     assign mod_mul_op1_i    = ctrl_i[0] ? delay_1_w0_data_o : w0_i;
-    assign mod_mul_op2_i    = ctrl_i[0] ? delay_1_sub_data_o : b0_i;
+    assign mod_mul_op2_i    = ctrl_i[0] ? mod_sub_result_o : b0_i;
 
     // -------- Modular Divider2 Instantiation --------
     mod_div_by_2 u_mod_div_by_2 (
         .op_i       (mod_div_by_2_op_i),
         .op_o       (mod_div_by_2_op_o)
     );
-    assign mod_div_by_2_op_i = delay_1_add_data_o;
+    assign mod_div_by_2_op_i = mod_add_result_o;
 
     // =========================================================================
     // PE Outputs
     // =========================================================================
 
-    assign u0_o     = ctrl_i[2] ? delay_3_data_o : delay_1_add_data_o;
-    assign v0_o     = ctrl_i[2] ? mod_mul_result_o : delay_1_sub_data_o;
+    assign u0_o     = ctrl_i[2] ? delay_3_data_o : mod_add_result_o;
+    assign v0_o     = ctrl_i[2] ? mod_mul_result_o : mod_sub_result_o;
 
     always_comb begin
         if (ctrl_i == PE_MODE_ADDSUB) begin

@@ -69,19 +69,16 @@ module pe1 (
     logic delay_4_valid_data_i, delay_4_valid_data_o;
     logic delay_1_valid_data_i, delay_1_valid_data_o;
 
-    // -------- Stage 1 Output Registers --------
-    coeff_t delay_1_add_data_i, delay_1_add_data_o;
-    coeff_t delay_1_uni_add_sub_data_i, delay_1_uni_add_sub_data_o;
+    // (delay_1_add and delay_1_uni_add_sub registers were removed via retiming)
 
     // -------- Stage 2 Padding Registers --------
     coeff_t delay_3_u1_data_i, delay_3_u1_data_o;
     coeff_t delay_3_v1_data_i, delay_3_v1_data_o;
 
     // ============= Arithmetic Module Wires =============
-    coeff_t mod_add_op1_i, mod_add_op2_i, mod_add_result_o;
+    coeff_t mod_add_res_0, mod_add_res_1, mod_add_result_o;
     coeff_t mod_div_by_2_op_i, mod_div_by_2_op_o;
-    coeff_t mod_uni_add_sub_op1_i, mod_uni_add_sub_op2_i, mod_uni_add_sub_result_o;
-    logic   mod_uni_add_sub_is_sub_i;
+    coeff_t mod_uni_add_sub_res_0, mod_uni_add_sub_res_1, mod_uni_add_sub_result_o;
 
     // =========================================================================
     // Delay Register Instantiations
@@ -115,31 +112,7 @@ module pe1 (
     // Latency is strictly determined by ctrl_i[3]
     assign delay_1_valid_data_i = (ctrl_i[3] == 1'b0) ? valid_i : 1'b0;
 
-    // -------- Delay 1 Addition Output Register --------
-    delay_n #(
-        .DWIDTH(COEFF_WIDTH),
-        .DEPTH(1)
-    ) u_delay_1_add (
-        .clk(clk),
-        .rst(rst),
-
-        .data_i(delay_1_add_data_i),
-        .data_o(delay_1_add_data_o)
-    );
-    assign delay_1_add_data_i = mod_add_result_o;
-
-    // -------- Delay 1 Unified Add/Sub Output Register --------
-    delay_n #(
-        .DWIDTH(COEFF_WIDTH),
-        .DEPTH(1)
-    ) u_delay_1_uni_add_sub (
-        .clk(clk),
-        .rst(rst),
-
-        .data_i(delay_1_uni_add_sub_data_i),
-        .data_o(delay_1_uni_add_sub_data_o)
-    );
-    assign delay_1_uni_add_sub_data_i = mod_uni_add_sub_result_o;
+    // (delay_1_add and delay_1_uni_add_sub registers were removed via retiming)
 
     // -------- Delay 3 U1 Padding Register --------
     delay_n #(
@@ -152,7 +125,7 @@ module pe1 (
         .data_i(delay_3_u1_data_i),
         .data_o(delay_3_u1_data_o)
     );
-    assign delay_3_u1_data_i = ctrl_i[2] ? mod_div_by_2_op_o : delay_1_add_data_o;
+    assign delay_3_u1_data_i = ctrl_i[2] ? mod_div_by_2_op_o : mod_add_result_o;
 
     // -------- Delay 3 V1 Padding Register --------
     delay_n #(
@@ -165,47 +138,64 @@ module pe1 (
         .data_i(delay_3_v1_data_i),
         .data_o(delay_3_v1_data_o)
     );
-    assign delay_3_v1_data_i = delay_1_uni_add_sub_data_o;
+    assign delay_3_v1_data_i = mod_uni_add_sub_result_o;
 
     // =========================================================================
     // Arithmetic Module Instantiations
     // =========================================================================
 
     // -------- Modular Adder Instantiation --------
-    mod_add u_mod_add (
-        .op1_i      (mod_add_op1_i),
-        .op2_i      (mod_add_op2_i),
-
-        .result_o   (mod_add_result_o)
+    mod_add u_mod_add_0 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (a1_i),
+        .op2_i      (c1_i),
+        .result_o   (mod_add_res_0)
     );
-    assign mod_add_op1_i    = a1_i;
-    assign mod_add_op2_i    = ctrl_i[1] ? b1_i : c1_i;
+
+    mod_add u_mod_add_1 (
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (a1_i),
+        .op2_i      (b1_i),
+        .result_o   (mod_add_res_1)
+    );
+    assign mod_add_result_o = ctrl_i[1] ? mod_add_res_1 : mod_add_res_0;
 
     // -------- Modular Divider2 Instantiation --------
     mod_div_by_2 u_mod_div_by_2 (
         .op_i       (mod_div_by_2_op_i),
         .op_o       (mod_div_by_2_op_o)
     );
-    assign mod_div_by_2_op_i = delay_1_add_data_o;
+    assign mod_div_by_2_op_i = mod_add_result_o;
 
     // -------- Modular Unified Add/Sub Instantiation --------
-    mod_uni_add_sub u_uni_add_sub(
-        .op1_i      (mod_uni_add_sub_op1_i),
-        .op2_i      (mod_uni_add_sub_op2_i),
-        .is_sub_i   (mod_uni_add_sub_is_sub_i),
-        .result_o   (mod_uni_add_sub_result_o)
+    mod_uni_add_sub u_uni_add_sub_0(
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (c0_i),
+        .op2_i      (b1_i),
+        .is_sub_i   (1'b0),
+        .result_o   (mod_uni_add_sub_res_0)
     );
-    assign mod_uni_add_sub_op1_i = ctrl_i[1] ? a1_i : c0_i;
-    assign mod_uni_add_sub_op2_i = b1_i;
-    assign mod_uni_add_sub_is_sub_i = ctrl_i[1];
+
+    mod_uni_add_sub u_uni_add_sub_1(
+        .clk        (clk),
+        .rst        (rst),
+        .op1_i      (a1_i),
+        .op2_i      (b1_i),
+        .is_sub_i   (1'b1),
+        .result_o   (mod_uni_add_sub_res_1)
+    );
+    assign mod_uni_add_sub_result_o = ctrl_i[1] ? mod_uni_add_sub_res_1 : mod_uni_add_sub_res_0;
 
     // =========================================================================
     // PE Outputs
     // =========================================================================
 
-    // Bypass routes must use registered output (_data_o)
-    assign u1_o = ctrl_i[3] ? delay_3_u1_data_o : delay_1_add_data_o;
-    assign v1_o = ctrl_i[3] ? delay_3_v1_data_o : delay_1_uni_add_sub_data_o;
+    // Bypass routes must use registered output
+    assign u1_o = ctrl_i[3] ? delay_3_u1_data_o : mod_add_result_o;
+    assign v1_o = ctrl_i[3] ? delay_3_v1_data_o : mod_uni_add_sub_result_o;
 
     // Output Valid MUX strictly controlled by ctrl_i[3]
     always_comb begin

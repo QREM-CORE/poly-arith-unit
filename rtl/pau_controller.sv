@@ -107,9 +107,9 @@ module pau_controller #(
     localparam logic [1:0] PASS_3               = 2'd3;
 
     // Pipeline latencies
-    localparam logic [3:0] PIPE_LAT_ADD_SUB     = 4'd1;
-    localparam logic [3:0] PIPE_LAT_COMP        = 4'd3;
-    localparam logic [3:0] PIPE_LAT_NTT_INTT    = 4'd8;
+    localparam logic [3:0] PIPE_LAT_ADD_SUB     = 4'd2;
+    localparam logic [3:0] PIPE_LAT_COMP        = 4'd4;
+    localparam logic [3:0] PIPE_LAT_NTT_INTT    = 4'd9;
 
     // Common stride values
     localparam logic [7:0] STRIDE_1             = 8'd1;
@@ -145,7 +145,8 @@ module pau_controller #(
         S_RUN       = 3'd2,
         S_DRAIN     = 3'd3,
         S_NEXT_PASS = 3'd4,
-        S_DONE      = 3'd5
+        S_DONE      = 3'd5,
+        S_CWM_FLUSH = 3'd6
     } state_e;
 
     state_e state_r, state_n;
@@ -206,6 +207,7 @@ module pau_controller #(
     // =========================================================================
     pe_mode_e pe_ctrl_d1_r;
     logic     pe_valid_d1_r;
+    logic     pass_is_radix2_d1_r;
 
     // =========================================================================
     // Index generation helpers
@@ -230,7 +232,7 @@ module pau_controller #(
 
             PE_MODE_NTT: begin
                 pipe_lat     = PIPE_LAT_NTT_INTT;
-                wb_lat       = (pass_idx_r == PASS_3) ? 4'd5 : 4'd9;
+                wb_lat       = (pass_idx_r == PASS_3) ? 4'd7 : 4'd11;
                 pass_uses_tf = 1'b1;
                 last_pass    = (pass_idx_r == PASS_3);
 
@@ -265,7 +267,7 @@ module pau_controller #(
 
             PE_MODE_INTT: begin
                 pipe_lat     = PIPE_LAT_NTT_INTT;
-                wb_lat       = (pass_idx_r == PASS_0) ? 4'd5 : 4'd9;
+                wb_lat       = (pass_idx_r == PASS_0) ? 4'd7 : 4'd11;
                 pass_uses_tf = 1'b1;
                 last_pass    = (pass_idx_r == PASS_3);
 
@@ -303,7 +305,7 @@ module pau_controller #(
                 blocks_max     = COUNT_64;
                 bfs_max        = COUNT_1;
                 pipe_lat       = PIPE_LAT_NTT_INTT;
-                wb_lat         = 4'd9;
+                wb_lat         = 4'd11;
                 pass_uses_tf   = 1'b1;
                 last_pass      = 1'b1;
             end
@@ -314,7 +316,7 @@ module pau_controller #(
                 blocks_max     = COUNT_64;
                 bfs_max        = COUNT_1;
                 pipe_lat       = PIPE_LAT_COMP;
-                wb_lat         = 4'd4;
+                wb_lat         = 4'd6;
                 pass_uses_tf   = 1'b0;
                 last_pass      = 1'b1;
             end
@@ -324,7 +326,7 @@ module pau_controller #(
                 blocks_max     = COUNT_64;
                 bfs_max        = COUNT_1;
                 pipe_lat       = PIPE_LAT_ADD_SUB;
-                wb_lat         = 4'd2;
+                wb_lat         = 4'd4;
                 pass_uses_tf   = 1'b0;
                 last_pass      = 1'b1;
             end
@@ -334,7 +336,7 @@ module pau_controller #(
                 blocks_max     = ZERO6;
                 bfs_max        = ZERO6;
                 pipe_lat       = PIPE_LAT_ADD_SUB;
-                wb_lat         = 4'd2;
+                wb_lat         = 4'd4;
                 pass_uses_tf   = 1'b0;
                 last_pass      = 1'b1;
             end
@@ -601,7 +603,8 @@ module pau_controller #(
                 if (op_r == PE_MODE_CWM) begin
                     if (cmi_ready_i && mac_drain_accept_i) begin
                         if (cwm_drain_idx_r == CWM_PAIR_LAST) begin
-                            state_n = S_DONE;
+                            state_n = S_CWM_FLUSH;
+                            drain_cnt_n = 4'd4;
                         end else begin
                             cwm_drain_idx_n = cwm_drain_idx_r + 7'd1;
                         end
@@ -612,6 +615,13 @@ module pau_controller #(
                     else
                         state_n = S_NEXT_PASS;
                 end
+            end
+
+            S_CWM_FLUSH: begin
+                if (!drain_done)
+                    drain_cnt_n = drain_cnt_r - 4'd1;
+                else
+                    state_n = S_DONE;
             end
 
             S_NEXT_PASS: begin
@@ -653,6 +663,7 @@ module pau_controller #(
 
             pe_ctrl_d1_r  <= PE_MODE_NTT;
             pe_valid_d1_r <= 1'b0;
+            pass_is_radix2_d1_r <= 1'b0;
         end else begin
             state_r      <= state_n;
             pass_idx_r   <= pass_idx_n;
@@ -681,6 +692,8 @@ module pau_controller #(
             // Delay control/valid by 1 cycle to match wrapper read latency
             pe_ctrl_d1_r  <= op_r;
             pe_valid_d1_r <= issue_fire;
+            pass_is_radix2_d1_r <= pass_is_radix2 &&
+                                   ((state_r == S_RUN) || (state_r == S_DRAIN));
         end
     end
 
@@ -703,8 +716,7 @@ module pau_controller #(
     assign tf_step_o          = pass_uses_tf &&
                                 issue_fire &&
                                 ((op_r != PE_MODE_CWM) || issue_addr_r[0]);
-    assign pass_is_radix2_o   = pass_is_radix2 &&
-                                ((state_r == S_RUN) || (state_r == S_DRAIN));
+    assign pass_is_radix2_o   = pass_is_radix2_d1_r;
     assign pass_idx_o         = pass_idx_r;
 
     // NOTE(PAU/Mem): CWM accumulation walks source-term slots directly while
@@ -749,10 +761,10 @@ module pau_controller #(
     // CWM writeback latency is now state-dependent:
     //   RUN   : no PE writeback is expected yet, so the value is unused.
     //   DRAIN : read e_hat (1cc) -> fuse/output register in mac_row_accum (1cc)
-    //           -> writeback, therefore 2cc from read issue to wr_en.
+    //           -> writeback, therefore 4cc from read issue to wr_en due to new pipelines.
     assign cmi_wb_latency_o   = ((op_r == PE_MODE_CWM) &&
-                                 ((state_r == S_DRAIN) || (state_r == S_DONE) ||
-                                  (state_r == S_IDLE))) ? 4'd2 : wb_lat;
+                                 ((state_r == S_DRAIN) || (state_r == S_CWM_FLUSH) || (state_r == S_DONE) ||
+                                  (state_r == S_IDLE))) ? 4'd4 : wb_lat;
 
     // Expose the row-accumulator control plane so poly_arith_unit can delay/align it
     // to the real CWM datapath latency.

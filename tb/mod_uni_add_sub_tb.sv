@@ -19,6 +19,7 @@ module mod_uni_add_sub_tb();
     coeff_t         op1;
     coeff_t         op2;
     logic           is_sub; // 0 = Add, 1 = Sub
+    logic           rst;
 
     // Outputs
     coeff_t         result_o;
@@ -45,6 +46,8 @@ module mod_uni_add_sub_tb();
     // DUT Instantiation
     // ------------------------------------------------------
     mod_uni_add_sub dut (
+        .clk      (clk),
+        .rst      (rst),
         .op1_i    (op1),
         .op2_i    (op2),
         .is_sub_i (is_sub),
@@ -56,8 +59,10 @@ module mod_uni_add_sub_tb();
     // ------------------------------------------------------
     initial begin
         clk = 0;
-        forever #5 clk = ~clk; // 100MHz Clock
+        rst = 1;
+        #15 rst = 0;
     end
+    always #5 clk = ~clk; // 100MHz Clock
 
     // ------------------------------------------------------
     // Golden Model (Pure Math)
@@ -100,13 +105,21 @@ module mod_uni_add_sub_tb();
         @(posedge clk);
     endtask
 
+    transaction_t expected_queue_delayed [$];
+
+    always @(posedge clk) begin
+        if (expected_queue.size() > 0) begin
+            expected_queue_delayed.push_back(expected_queue.pop_front());
+        end
+    end
+
     // ------------------------------------------------------
     // Monitor Process
     // ------------------------------------------------------
     always @(negedge clk) begin
-        if (expected_queue.size() > 0) begin
+        if (expected_queue_delayed.size() > 0) begin
             transaction_t trans;
-            trans = expected_queue.pop_front();
+            trans = expected_queue_delayed.pop_front();
 
             // ONLY print if there is a mismatch
             if (result_o !== trans.expected) begin

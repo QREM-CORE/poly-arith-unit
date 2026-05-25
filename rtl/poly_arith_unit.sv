@@ -203,6 +203,46 @@ module poly_arith_unit #(
     coeff_t          w2;
     coeff_t          w3;
 
+    // ==========================================================
+    // Pipeline Registers to cut critical path from CMI
+    // ==========================================================
+    logic [3:0][15:0] coeff_from_cmi_q;
+    logic [3:0][15:0] aux_coeff_from_cmi_q;
+    logic             pe_valid_q;
+    pe_mode_e         pe_ctrl_q;
+    logic             is_radix2_pe_q;
+    coeff_t           w0_q, w1_q, w2_q, w3_q;
+    coeff_t           w0_cwm_aligned_q;
+    logic [3:0]       pe_wb_en_q;
+    logic [3:0][15:0] pe_wb_data_q;
+    logic             pau_rd_valid_q;
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            coeff_from_cmi_q <= '0;
+            aux_coeff_from_cmi_q <= '0;
+            pe_valid_q <= 1'b0;
+            pe_ctrl_q <= PE_MODE_IDLE;
+            is_radix2_pe_q <= 1'b0;
+            w0_q <= '0; w1_q <= '0; w2_q <= '0; w3_q <= '0;
+            w0_cwm_aligned_q <= '0;
+            pe_wb_en_q <= '0;
+            pe_wb_data_q <= '0;
+            pau_rd_valid_q <= 1'b0;
+        end else begin
+            coeff_from_cmi_q <= coeff_from_cmi;
+            aux_coeff_from_cmi_q <= aux_coeff_from_cmi;
+            pe_valid_q <= pe_valid;
+            pe_ctrl_q <= pe_ctrl;
+            is_radix2_pe_q <= is_radix2_pe;
+            w0_q <= w0; w1_q <= w1; w2_q <= w2; w3_q <= w3;
+            w0_cwm_aligned_q <= w0_cwm_aligned;
+            pe_wb_en_q <= pe_wb_en;
+            pe_wb_data_q <= pe_wb_data;
+            pau_rd_valid_q <= pau_rd_valid_i;
+        end
+    end
+
     // ==========================================
     // Operational Logic
     // ==========================================
@@ -325,8 +365,8 @@ module poly_arith_unit #(
         .cwm_drain_issue_i      (mac_drain_issue),
         .pass_idx_i             (pass_idx),
         .is_radix2_i            (is_radix2_pe),
-        .wr_en_i                (pe_wb_en),
-        .wr_data_i              (pe_wb_data),
+        .wr_en_i                (pe_wb_en_q),
+        .wr_data_i              (pe_wb_data_q),
         .coeff_o                (coeff_from_cmi),
         .aux_coeff_o            (aux_coeff_from_cmi),
         .ready_o                (cmi_ready),
@@ -421,7 +461,7 @@ module poly_arith_unit #(
 
     delay_n #(
         .DWIDTH (1),
-        .DEPTH  (9)  // 8 PE cycles + 1 CMI read latency
+        .DEPTH  (10) // 8 PE cycles + 1 CMI read latency + 1 pipe
     ) u_cwm_align_first_term (
         .clk    (clk),
         .rst    (rst),
@@ -431,7 +471,7 @@ module poly_arith_unit #(
 
     delay_n #(
         .DWIDTH (7),
-        .DEPTH  (9)  // 8 PE cycles + 1 CMI read latency
+        .DEPTH  (10) // 8 PE cycles + 1 CMI read latency + 1 pipe
     ) u_cwm_align_pair_idx (
         .clk    (clk),
         .rst    (rst),
@@ -442,9 +482,10 @@ module poly_arith_unit #(
     // DRAIN reads e_hat through the existing memory path. The response returns
     // one cycle after the controller issues the request, so delay the drain
     // bookkeeping by one cycle before pushing it into the row accumulator.
+    // Since we added 1 pipeline stage for forward data, this depth is 2.
     delay_n #(
         .DWIDTH (1),
-        .DEPTH  (1)
+        .DEPTH  (2)
     ) u_drain_issue_d1 (
         .clk    (clk),
         .rst    (rst),
@@ -454,7 +495,7 @@ module poly_arith_unit #(
 
     delay_n #(
         .DWIDTH (7),
-        .DEPTH  (1)
+        .DEPTH  (2)
     ) u_drain_idx_d1 (
         .clk    (clk),
         .rst    (rst),
@@ -464,7 +505,7 @@ module poly_arith_unit #(
 
     delay_n #(
         .DWIDTH (1),
-        .DEPTH  (1)
+        .DEPTH  (2)
     ) u_drain_fuse_d1 (
         .clk    (clk),
         .rst    (rst),
@@ -476,18 +517,19 @@ module poly_arith_unit #(
     pe_unit u_pe_unit (
         .clk                (clk),
         .rst                (rst),
-        .valid_i            (pe_valid),
-        .ctrl_i             (pe_ctrl),
-        .mode_i             ((pe_ctrl == PE_MODE_ADDSUB) ? is_sub_i : is_radix2_pe),
-        .op_a0_i            (coeff_from_cmi[0][COEFF_WIDTH-1:0]),
-        .op_a1_i            (coeff_from_cmi[1][COEFF_WIDTH-1:0]),
-        .op_a2_i            ((pe_ctrl == PE_MODE_CWM) ? aux_coeff_from_cmi[0][COEFF_WIDTH-1:0] : coeff_from_cmi[2][COEFF_WIDTH-1:0]),
-        .op_a3_i            ((pe_ctrl == PE_MODE_CWM) ? aux_coeff_from_cmi[1][COEFF_WIDTH-1:0] : coeff_from_cmi[3][COEFF_WIDTH-1:0]),
-        .op_b0_i            (pe_ctrl == PE_MODE_ADDSUB ? aux_coeff_from_cmi[0][COEFF_WIDTH-1:0] :
-                             (is_cwm ? w0_cwm_aligned : w0)),
-        .op_b1_i            (pe_ctrl == PE_MODE_ADDSUB ? aux_coeff_from_cmi[1][COEFF_WIDTH-1:0] : w1),
-        .op_b2_i            (pe_ctrl == PE_MODE_ADDSUB ? aux_coeff_from_cmi[2][COEFF_WIDTH-1:0] : w2),
-        .op_b3_i            (pe_ctrl == PE_MODE_ADDSUB ? aux_coeff_from_cmi[3][COEFF_WIDTH-1:0] : w3),
+        .valid_i            (pe_valid_q),
+        .ctrl_i             (pe_ctrl_q),
+        .is_radix2_i        (is_radix2_pe_q),
+        .is_sub_i           (is_sub_i),
+        .op_a0_i            (coeff_from_cmi_q[0][COEFF_WIDTH-1:0]),
+        .op_a1_i            (coeff_from_cmi_q[1][COEFF_WIDTH-1:0]),
+        .op_a2_i            ((pe_ctrl_q == PE_MODE_CWM) ? aux_coeff_from_cmi_q[0][COEFF_WIDTH-1:0] : coeff_from_cmi_q[2][COEFF_WIDTH-1:0]),
+        .op_a3_i            ((pe_ctrl_q == PE_MODE_CWM) ? aux_coeff_from_cmi_q[1][COEFF_WIDTH-1:0] : coeff_from_cmi_q[3][COEFF_WIDTH-1:0]),
+        .op_b0_i            (pe_ctrl_q == PE_MODE_ADDSUB ? aux_coeff_from_cmi_q[0][COEFF_WIDTH-1:0] :
+                             ((pe_ctrl_q == PE_MODE_CWM) ? w0_cwm_aligned_q : w0_q)),
+        .op_b1_i            (pe_ctrl_q == PE_MODE_ADDSUB ? aux_coeff_from_cmi_q[1][COEFF_WIDTH-1:0] : w1_q),
+        .op_b2_i            (pe_ctrl_q == PE_MODE_ADDSUB ? aux_coeff_from_cmi_q[2][COEFF_WIDTH-1:0] : w2_q),
+        .op_b3_i            (pe_ctrl_q == PE_MODE_ADDSUB ? aux_coeff_from_cmi_q[3][COEFF_WIDTH-1:0] : w3_q),
         .z0_o               (z0_o),
         .z1_o               (z1_o),
         .z2_o               (z2_o),
@@ -496,7 +538,7 @@ module poly_arith_unit #(
     );
 
     // ---- Scratch-backed row accumulator for CWM ----
-    // The drain path intentionally reuses lanes 0/1 from coeff_from_cmi as
+    // The drain path intentionally reuses lanes 0/1 from coeff_from_cmi_q as
     // the e_hat pair being fused into the final t_hat writeback.
     mac_row_accum u_row_accum (
         .clk            (clk),
@@ -506,11 +548,11 @@ module poly_arith_unit #(
         .pair_idx_i     (cwm_pair_idx_aligned),
         .cwm0_i         (cwm_z1_aligned),
         .cwm1_i         (z2_o),
-        .drain_req_i    (drain_issue_d1 && pau_rd_valid_i),
+        .drain_req_i    (drain_issue_d1 && pau_rd_valid_q),
         .drain_idx_i    (drain_idx_d1),
         .fuse_e_i       (fuse_e_d1),
-        .e0_i           (coeff_from_cmi[0][COEFF_WIDTH-1:0]),
-        .e1_i           (coeff_from_cmi[1][COEFF_WIDTH-1:0]),
+        .e0_i           (coeff_from_cmi_q[0][COEFF_WIDTH-1:0]),
+        .e1_i           (coeff_from_cmi_q[1][COEFF_WIDTH-1:0]),
         .drain_ready_i  (cmi_ready),
         .drain_accept_o (mac_drain_accept),
         .drain_valid_o  (acc_drain_valid),

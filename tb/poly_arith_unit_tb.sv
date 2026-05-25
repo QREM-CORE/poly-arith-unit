@@ -34,6 +34,8 @@ module poly_arith_unit_tb;
     // =========================================================================
     // 1. Clock & Reset
     // =========================================================================
+    parameter bit ENABLE_DEBUG_PRINTS = 0;
+
     logic clk = 0;
     logic rst = 1;
     always #5 clk = ~clk;
@@ -249,36 +251,38 @@ module poly_arith_unit_tb;
         end else begin
             cycle_cnt <= cycle_cnt + 1;
 
-            // Read issue
-            if (pau_req_o && pau_rd_en_o && !pau_stall_i) begin
-                $display("[%0d] RD_ISSUE: poly=%0d idx={%0d,%0d,%0d,%0d} valid=%b",
-                    cycle_cnt,
-                    pau_rd_poly_id_o,
-                    pau_rd_idx_o[0], pau_rd_idx_o[1],
-                    pau_rd_idx_o[2], pau_rd_idx_o[3],
-                    pau_rd_lane_valid_o);
-            end
+            if (ENABLE_DEBUG_PRINTS) begin
+                // Read issue
+                if (pau_req_o && pau_rd_en_o && !pau_stall_i) begin
+                    $display("[%0d] RD_ISSUE: poly=%0d idx={%0d,%0d,%0d,%0d} valid=%b",
+                        cycle_cnt,
+                        pau_rd_poly_id_o,
+                        pau_rd_idx_o[0], pau_rd_idx_o[1],
+                        pau_rd_idx_o[2], pau_rd_idx_o[3],
+                        pau_rd_lane_valid_o);
+                end
 
-            // Aux read issue
-            if (pau_aux_req_o && pau_aux_rd_en_o) begin
-                $display("[%0d] AUX_ISSUE: poly=%0d idx={%0d,%0d,%0d,%0d} valid=%b",
-                    cycle_cnt,
-                    pau_aux_rd_poly_id_o,
-                    pau_aux_rd_idx_o[0], pau_aux_rd_idx_o[1],
-                    pau_aux_rd_idx_o[2], pau_aux_rd_idx_o[3],
-                    pau_aux_rd_lane_valid_o);
-            end
+                // Aux read issue
+                if (pau_aux_req_o && pau_aux_rd_en_o) begin
+                    $display("[%0d] AUX_ISSUE: poly=%0d idx={%0d,%0d,%0d,%0d} valid=%b",
+                        cycle_cnt,
+                        pau_aux_rd_poly_id_o,
+                        pau_aux_rd_idx_o[0], pau_aux_rd_idx_o[1],
+                        pau_aux_rd_idx_o[2], pau_aux_rd_idx_o[3],
+                        pau_aux_rd_lane_valid_o);
+                end
 
-            // Write beat
-            if (|pau_wr_en_o) begin
-                $display("[%0d] WR_BEAT:  poly=%0d idx={%0d,%0d,%0d,%0d} en=%b data={%03x,%03x,%03x,%03x}",
-                    cycle_cnt,
-                    pau_wr_poly_id_o,
-                    pau_wr_idx_o[0], pau_wr_idx_o[1],
-                    pau_wr_idx_o[2], pau_wr_idx_o[3],
-                    pau_wr_en_o,
-                    pau_wr_data_o[0][11:0], pau_wr_data_o[1][11:0],
-                    pau_wr_data_o[2][11:0], pau_wr_data_o[3][11:0]);
+                // Write beat
+                if (|pau_wr_en_o) begin
+                    $display("[%0d] WR_BEAT:  poly=%0d idx={%0d,%0d,%0d,%0d} en=%b data={%03x,%03x,%03x,%03x}",
+                        cycle_cnt,
+                        pau_wr_poly_id_o,
+                        pau_wr_idx_o[0], pau_wr_idx_o[1],
+                        pau_wr_idx_o[2], pau_wr_idx_o[3],
+                        pau_wr_en_o,
+                        pau_wr_data_o[0][11:0], pau_wr_data_o[1][11:0],
+                        pau_wr_data_o[2][11:0], pau_wr_data_o[3][11:0]);
+                end
             end
         end
     end
@@ -295,7 +299,7 @@ module poly_arith_unit_tb;
     localparam int CWM_TRACE_PAIRS = 4; // trace first N pairs only
 
     always_ff @(posedge clk) begin
-        if (!rst && cwm_trace_en) begin
+        if (!rst && cwm_trace_en && ENABLE_DEBUG_PRINTS) begin
 
             // ------------------------------------------------------------------
             // Stage 1: Controller → CMI issue beat

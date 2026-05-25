@@ -45,7 +45,7 @@ module cmi #(
     parameter int N          = 256,
     parameter int W          = 16,
     parameter int NUM_POLYS  = qrem_global_pkg::NUM_POLYS,
-    parameter int MAX_WB_LAT = 10
+    parameter int MAX_WB_LAT = 11
 )(
     input  logic clk,
     input  logic rst,
@@ -321,15 +321,16 @@ module cmi #(
                         end
                     end
 
-                    if (is_radix2_i || (pass_idx_i == 2'd1) || (pass_idx_i == 2'd2)) begin
-                        $display("CMI primary resp pass=%0d radix2=%0b req_idx={%0d,%0d,%0d,%0d} ret_idx={%0d,%0d,%0d,%0d} coeff_o={%0h,%0h,%0h,%0h}",
-                                 pass_idx_i, is_radix2_i,
-                                 primary_req_idx_r[0], primary_req_idx_r[1],
-                                 primary_req_idx_r[2], primary_req_idx_r[3],
-                                 pau_rd_idx_i[0], pau_rd_idx_i[1],
-                                 pau_rd_idx_i[2], pau_rd_idx_i[3],
-                                 coeff_o[0], coeff_o[1], coeff_o[2], coeff_o[3]);
-                    end
+                    // if (is_radix2_i || (pass_idx_i == 2'd1) || (pass_idx_i == 2'd2)) begin
+                    //     $display("CMI primary resp pass=%0d radix2=%0b req_idx={%0d,%0d,%0d,%0d} ret_idx={%0d,%0d,%0d,%0d} coeff_o={%0h,%0h,%0h,%0h}",
+                    //              pass_idx_i, is_radix2_i,
+                    //              primary_req_idx_r[0], primary_req_idx_r[1],
+                    //              primary_req_idx_r[2], primary_req_idx_r[3],
+                    //              pau_rd_idx_i[0], pau_rd_idx_i[1],
+                    //              pau_rd_idx_i[2], pau_rd_idx_i[3],
+                    //              coeff_o[0], coeff_o[1], coeff_o[2], coeff_o[3]);
+                    // end
+
                 end
             end
 
@@ -462,6 +463,10 @@ module cmi #(
                 wr_idx_sel = wr_idx_pipe[6]; coeff_valid_sel = valid_pipe[6];
                 pass_idx_sel = pass_idx_pipe[6]; is_radix2_sel = is_radix2_pipe[6];
             end
+            4'd7: begin
+                wr_idx_sel = wr_idx_pipe[7]; coeff_valid_sel = valid_pipe[7];
+                pass_idx_sel = pass_idx_pipe[7]; is_radix2_sel = is_radix2_pipe[7];
+            end
             4'd9: begin
                 wr_idx_sel = wr_idx_pipe[9]; coeff_valid_sel = valid_pipe[9];
                 pass_idx_sel = pass_idx_pipe[9]; is_radix2_sel = is_radix2_pipe[9];
@@ -469,6 +474,10 @@ module cmi #(
             4'd10: begin
                 wr_idx_sel = wr_idx_pipe[10]; coeff_valid_sel = valid_pipe[10];
                 pass_idx_sel = pass_idx_pipe[10]; is_radix2_sel = is_radix2_pipe[10];
+            end
+            4'd11: begin
+                wr_idx_sel = wr_idx_pipe[11]; coeff_valid_sel = valid_pipe[11];
+                pass_idx_sel = pass_idx_pipe[11]; is_radix2_sel = is_radix2_pipe[11];
             end
             default: begin
                 wr_idx_sel = wr_idx_pipe[2]; coeff_valid_sel = valid_pipe[2];
