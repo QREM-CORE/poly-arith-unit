@@ -159,8 +159,8 @@ module mod_mul_tb();
 
         // Stop Driving
         @(posedge clk);
-        valid_i = 0;
-        op1 = 0; op2 = 0;
+        valid_i <= 0;
+        op1 <= 0; op2 <= 0;
 
         // Wait for Pipeline to Drain (3 cycles + safety)
         repeat(10) @(posedge clk);

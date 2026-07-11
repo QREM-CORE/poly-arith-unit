@@ -24,6 +24,9 @@ module mod_uni_add_sub_tb();
     // Outputs
     coeff_t         result_o;
 
+    logic           data_valid_in = 0;
+    logic           data_valid_out = 0;
+
     // Verification Stats
     int error_count = 0;
     int sent_count  = 0;
@@ -86,6 +89,7 @@ module mod_uni_add_sub_tb();
         transaction_t trans;
 
         // Drive inputs (at Posedge)
+        data_valid_in <= 1'b1;
         op1    <= a;
         op2    <= b;
         is_sub <= sub;
@@ -105,36 +109,34 @@ module mod_uni_add_sub_tb();
         @(posedge clk);
     endtask
 
-    transaction_t expected_queue_delayed [$];
-
     always @(posedge clk) begin
-        if (expected_queue.size() > 0) begin
-            expected_queue_delayed.push_back(expected_queue.pop_front());
-        end
+        data_valid_out <= data_valid_in;
     end
 
     // ------------------------------------------------------
     // Monitor Process
     // ------------------------------------------------------
     always @(negedge clk) begin
-        if (expected_queue_delayed.size() > 0) begin
+        if (data_valid_out) begin
             transaction_t trans;
-            trans = expected_queue_delayed.pop_front();
+            if (expected_queue.size() > 0) begin
+                trans = expected_queue.pop_front();
 
-            // ONLY print if there is a mismatch
-            if (result_o !== trans.expected) begin
-                $display("\n==================================================");
-                $display("[FAIL] Mismatch on %s", trans.name);
-                $display("  Op:       %s", (trans.sub ? "Subtraction" : "Addition"));
-                $display("  Input A:  %0d", trans.a);
-                $display("  Input B:  %0d", trans.b);
-                $display("  Expected: %0d", trans.expected);
-                $display("  Received: %0d", result_o);
-                $display("==================================================\n");
-                $error("Test Failed");
-                error_count++;
-            end else begin
-                recv_count++;
+                // ONLY print if there is a mismatch
+                if (result_o !== trans.expected) begin
+                    $display("\n==================================================");
+                    $display("[FAIL] Mismatch on %s", trans.name);
+                    $display("  Op:       %s", (trans.sub ? "Subtraction" : "Addition"));
+                    $display("  Input A:  %0d", trans.a);
+                    $display("  Input B:  %0d", trans.b);
+                    $display("  Expected: %0d", trans.expected);
+                    $display("  Received: %0d", result_o);
+                    $display("==================================================\n");
+                    $error("Test Failed");
+                    error_count++;
+                end else begin
+                    recv_count++;
+                end
             end
         end
     end
@@ -145,6 +147,7 @@ module mod_uni_add_sub_tb();
     initial begin
         // Initialize
         op1 = 0; op2 = 0; is_sub = 0;
+        data_valid_in = 0;
 
         // Wait for startup
         repeat(5) @(posedge clk);
@@ -185,9 +188,17 @@ module mod_uni_add_sub_tb();
             drive_input(rand_a, rand_b, rand_sub, "Random");
         end
 
-        // Wait for Queue to Drain
-        wait(expected_queue.size() == 0);
-        repeat(5) @(posedge clk);
+        // Stop Driving
+        // wait for one cycle to ensure last non-blocking assignment propagated
+        // wait, drive_input already waits for a posedge clk at the end.
+        data_valid_in <= 1'b0;
+
+        // Wait for Queue to Drain (Pipeline Drain)
+        repeat (5) @(posedge clk);
+        if (expected_queue.size() != 0) begin
+            $error("[FAIL] Pipeline failed to drain! %0d results missing.", expected_queue.size());
+            error_count++;
+        end
 
         // --------------------------------------------------
         // Final Report

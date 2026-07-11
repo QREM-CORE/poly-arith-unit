@@ -19,6 +19,9 @@ module mod_sub_tb();
     coeff_t        op2_i;
     coeff_t        result_o;
 
+    logic          data_valid_in = 0;
+    logic          data_valid_out = 0;
+
     // ------------------------------------------------------
     // Verification Stats
     // ------------------------------------------------------
@@ -64,6 +67,7 @@ module mod_sub_tb();
         transaction_t trans;
         begin
             @(posedge clk);
+            data_valid_in <= 1'b1;
             op1_i <= a;
             op2_i <= b;
 
@@ -87,12 +91,8 @@ module mod_sub_tb();
         end
     endtask
 
-    transaction_t expected_q_delayed[$];
-
     always @(posedge clk) begin
-        if (expected_q.size() > 0) begin
-            expected_q_delayed.push_back(expected_q.pop_front());
-        end
+        data_valid_out <= data_valid_in;
     end
 
     // ------------------------------------------------------
@@ -100,16 +100,18 @@ module mod_sub_tb();
     // ------------------------------------------------------
     // Checks result 1 cycle later
     always @(negedge clk) begin
-        if (expected_q_delayed.size() > 0) begin
+        if (data_valid_out) begin
             transaction_t trans;
-            trans = expected_q_delayed.pop_front();
+            if (expected_q.size() > 0) begin
+                trans = expected_q.pop_front();
 
-            if (result_o === trans.expected) begin
-                pass_count++;
-            end else begin
-                $display("[FAIL] Time:%0t | Input: %d - %d", $time, trans.a, trans.b);
-                $display("       Expected:%d | Got:%d", trans.expected, result_o);
-                fail_count++;
+                if (result_o === trans.expected) begin
+                    pass_count++;
+                end else begin
+                    $display("[FAIL] Time:%0t | Input: %d - %d", $time, trans.a, trans.b);
+                    $display("       Expected:%d | Got:%d", trans.expected, result_o);
+                    fail_count++;
+                end
             end
         end
     end
@@ -121,6 +123,7 @@ module mod_sub_tb();
         // Initialize
         op1_i = 0;
         op2_i = 0;
+        data_valid_in = 0;
 
         $display("==================================================");
         $display("Starting Modular Subtractor Verification (Combinational)");
@@ -146,9 +149,16 @@ module mod_sub_tb();
             send_sub(r1, r2);
         end
 
-        // Wait for checker queue to empty
-        wait(expected_q.size() == 0);
-        repeat (2) @(posedge clk);
+        // Stop Driving
+        @(posedge clk);
+        data_valid_in <= 1'b0;
+
+        // Wait for checker queue to empty (Pipeline Drain)
+        repeat (5) @(posedge clk);
+        if (expected_q.size() != 0) begin
+            $error("[FAIL] Pipeline failed to drain! %0d results missing.", expected_q.size());
+            fail_count++;
+        end
 
         // --- Final Report ---
         $display("\n--- FINAL REPORT ---");
