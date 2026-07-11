@@ -8,8 +8,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../mlkem-python/src'))
 
 try:
     from mlkem.auxiliaries import NTT, NTT_inv, MultiplyNTTs, q
-except ImportError:
+except ImportError as e:
     print("Error: Could not import mlkem auxiliaries. Check if verif/mlkem-python/src exists.")
+    print(f"Details: {e}")
     sys.exit(1)
 
 def write_mem(filename, coefficients):
