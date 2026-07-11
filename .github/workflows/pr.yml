@@ -17,6 +17,7 @@ jobs:
       # Automatically targets the repository and specific commit of the PR
       rtl_repo: ${{ github.repository }}
       commit_sha: ${{ github.sha }}
+      build_tools_ref: 'ci_upgrade_synth_metrics'
 
       # Your comma-separated top modules for the Yosys synthesis matrix
       top_modules: 'poly_arith_unit'
