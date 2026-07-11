@@ -163,8 +163,11 @@ module mod_mul_tb();
         op1 = 0; op2 = 0;
 
         // Wait for Pipeline to Drain (3 cycles + safety)
-        wait(expected_queue.size() == 0);
-        repeat(5) @(posedge clk);
+        repeat(10) @(posedge clk);
+        if (expected_queue.size() != 0) begin
+            $error("[FAIL] Pipeline failed to drain! %0d results missing.", expected_queue.size());
+            error_count++;
+        end
 
         // --------------------------------------------------
         // Final Report
